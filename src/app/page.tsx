@@ -1,91 +1,156 @@
+'use client'
+import MainLayout from '@/components/layout/main-layout'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Progress } from '@/components/ui/progress'
+import { Sparkles, Target, TrendingUp, Users } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { auth, db } from '@/lib/firebase'
+import { onAuthStateChanged } from 'firebase/auth'
 
 export default function Home() {
-  return (
-    <main className="min-h-screen p-8 bg-white">
-      <div className="max-w-4xl mx-auto space-y-8">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            Spokój w głowie
-          </h1>
-          <p className="text-lg text-gray-600">
-            Design System Test
-          </p>
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  // 🔥 DODAJ TEN USE EFFECT DO SPRAWDZENIA FIREBASE
+  useEffect(() => {
+    console.log('🔥 Firebase auth test:', auth)
+    console.log('📊 Firebase db test:', db)
+
+    // Sprawdzanie czy użytkownik jest zalogowany
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        console.log('✅ Użytkownik zalogowany:', user.email)
+        setUser(user)
+      } else {
+        console.log('❌ Brak zalogowanego użytkownika')
+        setUser(null)
+      }
+      setLoading(false)
+    })
+
+    return () => unsubscribe()
+  }, [])
+
+  // Jeśli ładujemy, pokaż prosty loader
+  if (loading) {
+    return (
+      <MainLayout>
+        <div className="flex justify-center items-center min-h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <p className="text-gray-600">Ładowanie...</p>
+          </div>
         </div>
+      </MainLayout>
+    )
+  }
 
-        {/* Color Palette */}
-        <section>
-          <h2 className="text-2xl font-semibold mb-4 text-gray-900">
-            Color Palette
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="space-y-2">
-              <div className="w-full h-20 bg-primary rounded-lg shadow-sm"></div>
-              <p className="text-sm text-gray-600 text-center">Primary</p>
-            </div>
-            <div className="space-y-2">
-              <div className="w-full h-20 bg-green-500 rounded-lg shadow-sm"></div>
-              <p className="text-sm text-gray-600 text-center">Accent Green</p>
-            </div>
-            <div className="space-y-2">
-              <div className="w-full h-20 bg-orange-500 rounded-lg shadow-sm"></div>
-              <p className="text-sm text-gray-600 text-center">Accent Orange</p>
-            </div>
-            <div className="space-y-2">
-              <div className="w-full h-20 bg-red-500 rounded-lg shadow-sm"></div>
-              <p className="text-sm text-gray-600 text-center">Accent Red</p>
-            </div>
-          </div>
-        </section>
-
-        {/* Typography Scale */}
-        <section>
-          <h2 className="text-2xl font-semibold mb-4 text-gray-900">
-            Typography
-          </h2>
-          <div className="space-y-3">
-            <h1 className="text-4xl font-bold text-gray-900">Heading 1 - 36px</h1>
-            <h2 className="text-3xl font-semibold text-gray-900">Heading 2 - 30px</h2>
-            <h3 className="text-2xl font-semibold text-gray-900">Heading 3 - 24px</h3>
-            <p className="text-base text-gray-600">Body text - 16px</p>
-            <p className="text-sm text-gray-500">Small text - 14px</p>
-          </div>
-        </section>
-
-        {/* Glassmorphism Test */}
-        <section>
-          <h2 className="text-2xl font-semibold mb-4 text-gray-900">
-            Glassmorphism
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-white/80 backdrop-blur-md border border-white/20 rounded-2xl p-6 shadow-sm">
-              <h3 className="text-lg font-semibold mb-2">Glass Card</h3>
-              <p className="text-gray-600">This is a glassmorphism card with backdrop blur</p>
-            </div>
-            <div className="bg-gradient-to-br from-blue-500 to-blue-700 p-6 rounded-2xl">
-              <h3 className="text-lg font-semibold mb-2 text-white">Gradient Card</h3>
-              <p className="text-white/80">This card shows gradient background</p>
-            </div>
-          </div>
-        </section>
-
-        {/* Buttons Preview */}
-        <section>
-          <h2 className="text-2xl font-semibold mb-4 text-gray-900">
-            Button Styles
-          </h2>
-          <div className="flex flex-wrap gap-3">
-            <button className="px-4 py-2 bg-blue-500 text-white rounded-lg font-medium">
-              Primary Button
-            </button>
-            <button className="px-4 py-2 bg-green-500 text-white rounded-lg font-medium">
-              Success Button
-            </button>
-            <button className="px-4 py-2 border border-gray-300 text-gray-900 rounded-lg font-medium">
-              Outline Button
-            </button>
-          </div>
-        </section>
+  return (
+    <MainLayout>
+      {/* Hero Section - DODAJ INFORMACJĘ O ZALOGOWANIU */}
+      <div className="text-center mb-16">
+        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-500/10 border border-blue-500/20 mb-6">
+          <Sparkles className="h-4 w-4 text-blue-500" />
+          <span className="text-sm font-medium text-blue-500">
+            {user ? `Witaj, ${user.email}!` : 'Architektura Uważności'}
+          </span>
+        </div>
+        
+        <h1 className="text-5xl md:text-6xl font-bold text-gray-900 mb-4">
+          Twój spokój jest
+          <span className="bg-gradient-to-br from-blue-500 to-purple-600 bg-clip-text text-transparent"> naszym celem</span>
+        </h1>
+        
+        <p className="text-xl text-gray-600 max-w-2xl mx-auto mb-8">
+          {user 
+            ? 'Kontynuuj swoją podróż do lepszego samopoczucia' 
+            : 'Dołącz do tysięcy użytkowników którzy już odkryli siłę codziennej uważności i samoobserwacji.'
+          }
+        </p>
+        
+        <div className="flex gap-4 justify-center">
+          {user ? (
+            <Button size="lg" className="rounded-full px-8">
+              Kontynuuj praktykę
+            </Button>
+          ) : (
+            <>
+              <Button size="lg" className="rounded-full px-8">
+                Rozpocznij podróż
+              </Button>
+              <Button variant="outline" size="lg" className="rounded-full px-8">
+                Dowiedz się więcej
+              </Button>
+            </>
+          )}
+        </div>
       </div>
-    </main>
+
+      {/* Reszta kodu pozostaje bez zmian */}
+      {/* Stats Section */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
+        <Card className="text-center bg-white/80 backdrop-blur-md border border-gray-200/50">
+          <CardContent className="pt-6">
+            <div className="w-12 h-12 bg-green-500/20 rounded-xl flex items-center justify-center mx-auto mb-4">
+              <Users className="h-6 w-6 text-green-500" />
+            </div>
+            <h3 className="text-3xl font-bold text-gray-900 mb-2">10k+</h3>
+            <p className="text-gray-600">Aktywnych użytkowników</p>
+          </CardContent>
+        </Card>
+
+        <Card className="text-center bg-white/80 backdrop-blur-md border border-gray-200/50">
+          <CardContent className="pt-6">
+            <div className="w-12 h-12 bg-orange-500/20 rounded-xl flex items-center justify-center mx-auto mb-4">
+              <Target className="h-6 w-6 text-orange-500" />
+            </div>
+            <h3 className="text-3xl font-bold text-gray-900 mb-2">94%</h3>
+            <p className="text-gray-600">Lepsze samopoczucie</p>
+          </CardContent>
+        </Card>
+
+        <Card className="text-center bg-white/80 backdrop-blur-md border border-gray-200/50">
+          <CardContent className="pt-6">
+            <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center mx-auto mb-4">
+              <TrendingUp className="h-6 w-6 text-blue-500" />
+            </div>
+            <h3 className="text-3xl font-bold text-gray-900 mb-2">30+</h3>
+            <p className="text-gray-600">Dni retencji</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Progress Section - POKAŻ TYLKO DLA ZALOGOWANYCH */}
+      {user && (
+        <Card className="max-w-2xl mx-auto bg-white/80 backdrop-blur-md border border-gray-200/50">
+          <CardHeader className="text-center">
+            <CardTitle>Twój postęp</CardTitle>
+            <CardDescription>
+              Kontynuuj swoją podróż do lepszego samopoczucia
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="font-medium">Poziom 5</span>
+                <span className="text-gray-600">280/500 XP</span>
+              </div>
+              <Progress value={56} className="h-3" />
+            </div>
+            
+            <div className="space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="font-medium">Streak</span>
+                <span className="text-gray-600">12 dni z rzędu</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div className="bg-orange-500 h-2 rounded-full" style={{ width: '80%' }}></div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </MainLayout>
   )
 }
