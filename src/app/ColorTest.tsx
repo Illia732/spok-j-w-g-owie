@@ -43,7 +43,7 @@ export default function ColorTest() {
         <div className="space-y-3">
           <h1 className="text-4xl font-bold text-text-primary">Heading 1 - 36px</h1>
           <h2 className="text-3xl font-semibold text-text-primary">Heading 2 - 30px</h2>
-          <h3 className="text-2xl font-semibold text-text-primary">Heading 3 - 24px</h2>
+          <h3 className="text-2xl font-semibold text-text-primary">Heading 3 - 24px</h3>
           <p className="text-base text-text-secondary">Body text - 16px</p>
           <p className="text-sm text-text-tertiary">Small text - 14px</p>
         </div>

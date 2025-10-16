@@ -1,121 +1,233 @@
+// src/app/(auth)/register/page.tsx
+'use client'
+import { useState, useEffect } from 'react'
+import { useAuth } from '@/components/providers/auth-provider'
+import { authService } from '@/lib/auth-service'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Sparkles } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 
 export default function RegisterPage() {
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-500/5 to-purple-600/5 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-purple-600">
-              <Sparkles className="h-6 w-6 text-white" />
-            </div>
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900">Spokój w głowie</h1>
-          <p className="text-gray-600 mt-2">Stwórz nowe konto</p>
-        </div>
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    password: '',
+    confirmPassword: ''
+  })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const router = useRouter()
+  const { user, loading: authLoading } = useAuth()
 
-        {/* Register Form */}
-        <Card className="bg-white/80 backdrop-blur-md border border-gray-200/50">
-          <CardHeader className="text-center">
-            <CardTitle className="text-xl">Rejestracja</CardTitle>
-            <CardDescription>
-              Wprowadź dane, aby stworzyć konto
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+  // Jeśli użytkownik jest już zalogowany, przekieruj do dashboard
+  useEffect(() => {
+    if (user && !authLoading) {
+      router.push('/dashboard')
+    }
+  }, [user, authLoading, router])
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({
+      ...prev,
+      [e.target.name]: e.target.value
+    }))
+  }
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    setError('')
+
+    // Walidacja
+    if (formData.password !== formData.confirmPassword) {
+      setError('Hasła nie są identyczne')
+      setLoading(false)
+      return
+    }
+
+    if (formData.password.length < 6) {
+      setError('Hasło musi mieć co najmniej 6 znaków')
+      setLoading(false)
+      return
+    }
+
+    try {
+      await authService.register(
+        formData.email, 
+        formData.password, 
+        {
+          firstName: formData.firstName,
+          lastName: formData.lastName
+        }
+      )
+      // Przekierowanie nastąpi automatycznie przez AuthProvider
+    } catch (error: any) {
+      setError(error.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-100 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-blue-500 mx-auto mb-4" />
+          <p className="text-gray-600">Ładowanie...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-100 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-blue-500 mx-auto mb-4" />
+          <p className="text-gray-600">Przekierowywanie...</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-100 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8">
+        <div className="bg-white rounded-2xl shadow-xl p-8">
+          <div className="text-center mb-8">
+            <div className="mx-auto w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mb-4">
+              <span className="text-white text-2xl font-bold">M</span>
+            </div>
+            <h1 className="text-3xl font-bold text-gray-900">Dołącz do nas</h1>
+            <p className="text-gray-600 mt-2">Stwórz swoje konto i zacznij śledzić swój nastrój</p>
+          </div>
+
+          <form onSubmit={handleRegister} className="space-y-6">
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                {error}
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label htmlFor="firstName" className="text-sm font-medium text-gray-700">
+              <div>
+                <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-2">
                   Imię
                 </label>
-                <Input
+                <input
                   id="firstName"
-                  placeholder="Jan"
-                  className="w-full"
+                  name="firstName"
+                  type="text"
+                  value={formData.firstName}
+                  onChange={handleChange}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                  required
+                  placeholder="Twoje imię"
                 />
               </div>
-              <div className="space-y-2">
-                <label htmlFor="lastName" className="text-sm font-medium text-gray-700">
+
+              <div>
+                <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-2">
                   Nazwisko
                 </label>
-                <Input
+                <input
                   id="lastName"
-                  placeholder="Kowalski"
-                  className="w-full"
+                  name="lastName"
+                  type="text"
+                  value={formData.lastName}
+                  onChange={handleChange}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                  required
+                  placeholder="Twoje nazwisko"
                 />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label htmlFor="email" className="text-sm font-medium text-gray-700">
-                Adres email
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+                Email
               </label>
-              <Input
+              <input
                 id="email"
+                name="email"
                 type="email"
-                placeholder="wprowadź@email.com"
-                className="w-full"
+                value={formData.email}
+                onChange={handleChange}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                required
+                placeholder="twój@email.com"
               />
             </div>
 
-            <div className="space-y-2">
-              <label htmlFor="password" className="text-sm font-medium text-gray-700">
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
                 Hasło
               </label>
-              <Input
+              <input
                 id="password"
+                name="password"
                 type="password"
-                placeholder="••••••••"
-                className="w-full"
+                value={formData.password}
+                onChange={handleChange}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                required
+                minLength={6}
+                placeholder="Minimum 6 znaków"
               />
-              <p className="text-xs text-gray-500">
-                Minimum 8 znaków, w tym jedna wielka litera i cyfra
-              </p>
             </div>
 
-            <div className="space-y-2">
-              <label htmlFor="confirmPassword" className="text-sm font-medium text-gray-700">
+            <div>
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
                 Potwierdź hasło
               </label>
-              <Input
-                id="confirmPassword"
-                type="password"
-                placeholder="••••••••"
-                className="w-full"
-              />
-            </div>
-
-            <div className="flex items-center space-x-2">
               <input
-                type="checkbox"
-                id="terms"
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                id="confirmPassword"
+                name="confirmPassword"
+                type="password"
+                value={formData.confirmPassword}
+                onChange={handleChange}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                required
+                minLength={6}
+                placeholder="Powtórz hasło"
               />
-              <label htmlFor="terms" className="text-sm text-gray-700">
-                Akceptuję{' '}
-                <Link href="/terms" className="text-blue-600 hover:text-blue-500">
-                  warunki użytkowania
-                </Link>
-              </label>
             </div>
 
-            <Button className="w-full" size="lg">
-              Zarejestruj się
-            </Button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-gradient-to-r from-blue-500 to-purple-500 text-white py-3 px-4 rounded-lg hover:from-blue-600 hover:to-purple-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 transition-all duration-200 font-medium"
+            >
+              {loading ? (
+                <div className="flex items-center justify-center">
+                  <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                  Rejestracja...
+                </div>
+              ) : (
+                'Zarejestruj się'
+              )}
+            </button>
+          </form>
 
-            <div className="text-center text-sm text-gray-600">
+          <div className="mt-6 text-center">
+            <p className="text-gray-600">
               Masz już konto?{' '}
-              <Link href="/auth/login" className="text-blue-600 hover:text-blue-500 font-medium">
+              <Link 
+                href="/auth/login" 
+                className="text-blue-600 hover:text-blue-700 font-medium transition-colors"
+              >
                 Zaloguj się
               </Link>
-            </div>
-          </CardContent>
-        </Card>
+            </p>
+          </div>
+
+          <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+            <p className="text-sm text-blue-700 text-center">
+              💡 Po rejestracji otrzymasz swój unikalny kod, którym możesz dzielić się ze znajomymi!
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   )

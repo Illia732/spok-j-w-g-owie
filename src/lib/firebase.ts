@@ -1,6 +1,8 @@
+// src/lib/firebase.ts
 import { initializeApp } from 'firebase/app'
 import { getAuth } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
+import { getStorage } from 'firebase/storage' // DODAJ
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -11,13 +13,7 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
 }
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig)
-
-// Initialize Firebase Authentication and get a reference to the service
 export const auth = getAuth(app)
-
-// Initialize Cloud Firestore and get a reference to the service
 export const db = getFirestore(app)
-
-export default app
+export const storage = getStorage(app) // DODAJ

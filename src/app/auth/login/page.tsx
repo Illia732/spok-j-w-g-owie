@@ -1,50 +1,97 @@
+// src/app/(auth)/login/page.tsx - POPRAWIONE
+'use client'
+import { useState } from 'react'
+import { useAuth } from '@/components/providers/auth-provider'
+import { authService } from '@/lib/auth-service'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Sparkles } from 'lucide-react'
 
 export default function LoginPage() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const router = useRouter()
+  const { user } = useAuth()
+
+  // Jeśli użytkownik jest już zalogowany, przekieruj do dashboard
+  if (user) {
+    router.push('/dashboard')
+  }
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    setError('')
+
+    try {
+      await authService.login(email, password)
+      router.push('/dashboard')
+    } catch (error: any) {
+      setError('Błąd logowania: ' + error.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-500/5 to-purple-600/5 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-purple-600">
-              <Sparkles className="h-6 w-6 text-white" />
-            </div>
+    <div className="bg-white rounded-2xl shadow-xl p-8">
+      <div className="text-center mb-8">
+        <h1 className="text-3xl font-bold text-gray-900">Zaloguj się</h1>
+        <p className="text-gray-600 mt-2">Witaj z powrotem!</p>
+      </div>
+
+      <form onSubmit={handleLogin} className="space-y-6">
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+            {error}
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Spokój w głowie</h1>
-          <p className="text-gray-600 mt-2">Zaloguj się do swojego konta</p>
+        )}
+
+        <div>
+          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+            Email
+          </label>
+          <input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            required
+          />
         </div>
 
-        <Card className="bg-white/80 backdrop-blur-md border border-gray-200/50">
-          <CardHeader className="text-center">
-            <CardTitle className="text-xl">Logowanie</CardTitle>
-            <CardDescription>Wprowadź swoje dane, aby się zalogować</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <label htmlFor="email" className="text-sm font-medium text-gray-700">Adres email</label>
-              <Input id="email" type="email" placeholder="wprowadź@email.com" className="w-full" />
-            </div>
+        <div>
+          <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+            Hasło
+          </label>
+          <input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            required
+          />
+        </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label htmlFor="password" className="text-sm font-medium text-gray-700">Hasło</label>
-                <Link href="/auth/forgot-password" className="text-sm text-blue-600 hover:text-blue-500">Zapomniałeś hasła?</Link>
-              </div>
-              <Input id="password" type="password" placeholder="••••••••" className="w-full" />
-            </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
+        >
+          {loading ? 'Logowanie...' : 'Zaloguj się'}
+        </button>
+      </form>
 
-            <Button className="w-full" size="lg">Zaloguj się</Button>
-
-            <div className="text-center text-sm text-gray-600">
-              Nie masz konta?{' '}
-              <Link href="/auth/register" className="text-blue-600 hover:text-blue-500 font-medium">Zarejestruj się</Link>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="mt-6 text-center">
+        <p className="text-gray-600">
+          Nie masz konta?{' '}
+          <Link href="/auth/register" className="text-blue-600 hover:text-blue-700 font-medium">
+            Zarejestruj się
+          </Link>
+        </p>
       </div>
     </div>
   )
