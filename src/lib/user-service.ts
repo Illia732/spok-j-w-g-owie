@@ -598,7 +598,7 @@ const userService = {
       snapshot.docs.map(async (doc) => {
         const request = { id: doc.id, ...doc.data() } as FriendRequest
         const fromUserProfile = await this.findUserById(request.fromUserId)
-        return { ...request, fromUserProfile }
+        return { ...request, fromUserProfile: fromUserProfile || undefined }
       })
     )
     
