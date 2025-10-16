@@ -623,7 +623,7 @@ const userService = {
         return
       }
       
-      const friends = await Promise.all(friendIds.map(id => this.findUserById(id)))
+      const friends = await Promise.all(friendIds.map((id: string) => this.findUserById(id)))
       callback(friends.filter(Boolean) as UserProfile[])
     })
   },
