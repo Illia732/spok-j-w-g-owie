@@ -27,9 +27,20 @@ import {
   Play,
   Share2
 } from 'lucide-react'
-import ReactQuill from 'react-quill'
-import 'react-quill/dist/quill.snow.css'
+import dynamic from 'next/dynamic'
 import Header from '@/components/layout/header'
+
+const ReactQuill = dynamic(() => import('react-quill'), {
+  ssr: false,
+  loading: () => (
+    <div className="h-[600px] flex items-center justify-center bg-gray-50 rounded-lg border">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+        <p className="text-gray-600">Ładowanie edytora...</p>
+      </div>
+    </div>
+  )
+})
 
 const CATEGORIES = [
   'Stres', 'Lęki', 'Matura', 'Nauka', 'Relacje', 'Samopoczucie',
