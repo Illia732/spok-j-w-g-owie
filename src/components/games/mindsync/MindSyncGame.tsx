@@ -9,17 +9,6 @@ import {
   Camera, Mic, Eye, Clock, Target
 } from 'lucide-react'
 
-// Nasze zaawansowane hooki
-import { useBinauralBeats } from './hooks/useBinauralBeats'
-import { useBreathAnalyzer } from './hooks/useBreathAnalyzer'
-import { usePulseDetection } from './hooks/usePulseDetection'
-import { useMeditationAI } from './hooks/useMeditationAI'
-
-// Komponenty
-import NeuroVisualizer from './components/NeuroVisualizer'
-import BreathGuide from './components/BreathGuide'
-import BioFeedback from './components/BioFeedback'
-import ProgressTracker from './components/ProgressTracker'
 
 type GameState = 'intro' | 'calibration' | 'meditation' | 'results'
 type MeditationMode = 'focus' | 'relax' | 'sleep' | 'energy'
