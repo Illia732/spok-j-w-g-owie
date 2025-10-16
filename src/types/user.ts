@@ -5,12 +5,9 @@ export interface UserProfile {
   displayName: string
   bio?: string
   avatarUrl?: string
-  userCode: string // 6-cyfrowy unikalny kod
   createdAt: Date
   updatedAt: Date
-  moodEntries?: MoodEntry[]
   friends: string[] // array of userCodes
-  friendRequests: FriendRequest[]
   userCode?: string
   friendRequests?: any[]
   streak: number
