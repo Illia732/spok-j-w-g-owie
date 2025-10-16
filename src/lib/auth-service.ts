@@ -89,7 +89,7 @@ export const authService = {
   // 👇 DODAJEMY NOWE FUNKCJE
   async isUserAdmin(uid: string): Promise<boolean> {
     try {
-      const userData = await userService.getUserData(uid)
+      const userData = await userService.getUserProfile(uid)
       return userData?.role === 'admin'
     } catch (error) {
       console.error('Błąd sprawdzania roli:', error)
@@ -99,7 +99,7 @@ export const authService = {
 
   async getUserRole(uid: string): Promise<'user' | 'admin' | null> {
     try {
-      const userData = await userService.getUserData(uid)
+      const userData = await userService.getUserProfile(uid)
       return userData?.role || null
     } catch (error) {
       console.error('Błąd pobierania roli:', error)

@@ -278,7 +278,6 @@ export const CircularMoodTracker: React.FC<CircularMoodTrackerProps> = ({
             currentMood={currentMood}
             onSave={handleSaveMood}
             isLoading={isSaving}
-            isSuccess={saveSuccess}
           />
         </div>
 

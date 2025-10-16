@@ -36,6 +36,8 @@ interface AIMoodInsights {
   specialTip: string
 }
 
+const [isLoading, setIsLoading] = useState(false)
+
 const getMoodColor = (value: number) => {
   if (value <= 20) return 'rgba(75, 85, 99, 0.8)'
   if (value <= 40) return 'rgba(59, 130, 246, 0.9)'
@@ -436,13 +438,13 @@ export const CircularMoodTracker: React.FC<CircularMoodTrackerProps> = ({
       </div>
 
       {/* Mood Entry Form */}
-      <MoodEntryForm
-        isOpen={showMoodForm}
-        currentMood={currentMood}
-        onSave={handleSaveMood}
-        onClose={() => setShowMoodForm(false)}
-        isLoading={isSaving}
-      />
+      {showMoodForm && (
+        <MoodEntryForm
+          currentMood={currentMood}
+          onSave={handleSaveMood}
+          isLoading={isLoading}
+        />
+      )}
 
       {/* AI Insights Modal */}
       <AnimatePresence>

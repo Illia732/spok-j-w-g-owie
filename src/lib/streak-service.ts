@@ -1,4 +1,13 @@
 // src/lib/streak-service.ts
+
+// 👇 DODAJ TEN INTERFEJS NA POCZĄTKU
+interface MoodEntry {
+  timestamp: Date
+  mood: number
+  note?: string
+  date?: string
+}
+
 export class StreakService {
   static calculateAdvancedStreak(entries: MoodEntry[]): {
     currentStreak: number

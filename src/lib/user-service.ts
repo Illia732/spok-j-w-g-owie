@@ -36,6 +36,7 @@ export interface UserProfile {
   createdAt: Date
   updatedAt: Date
   bio?: string
+  role?: 'user' | 'admin'
 }
 
 export interface FriendRequest {

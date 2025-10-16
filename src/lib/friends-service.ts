@@ -10,10 +10,30 @@ import {
   orderBy, 
   getDocs,
   onSnapshot,
-  serverTimestamp 
+  serverTimestamp,
+  getDoc
 } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
-import { FriendRequest, Friendship, FriendActivity } from '@/types/user'
+import { FriendRequest } from '@/types/user' // 👈 USUWAMY FriendActivity
+
+// 👇 DODAJEMY BRAKUJĄCE TYPY
+interface Friendship {
+  id: string
+  userId: string
+  friendId: string
+  friendName: string
+  createdAt: Date
+  moodVisibility: 'average' | 'detailed' | 'none'
+  streak: number
+}
+
+interface FriendActivity {
+  id: string
+  userId: string
+  type: 'mood_update' | 'streak_achievement' | 'level_up'
+  description: string
+  createdAt: Date
+}
 
 export const friendsService = {
   // Wysyłanie zaproszenia
@@ -47,18 +67,15 @@ export const friendsService = {
     }
 
     // Pobierz dane nadawcy
-    const fromUserDoc = await getDocs(doc(db, 'users', fromUserId))
+    const fromUserDoc = await getDoc(doc(db, 'users', fromUserId))
     const fromUserData = fromUserDoc.data()
 
     // Utwórz zaproszenie
     const request: Omit<FriendRequest, 'id'> = {
       fromUserId,
       toUserId,
-      fromUserName: fromUserData?.displayName || fromUserData?.email,
-      toUserName: toUserData?.displayName || toUserData?.email,
       status: 'pending',
-      createdAt: new Date(),
-      updatedAt: new Date()
+      createdAt: new Date()
     }
 
     await addDoc(collection(db, 'friendRequests'), request)
@@ -67,22 +84,29 @@ export const friendsService = {
   // Akceptowanie zaproszenia
   async acceptFriendRequest(requestId: string) {
     const requestRef = doc(db, 'friendRequests', requestId)
-    const requestDoc = await getDocs(requestRef)
+    const requestDoc = await getDoc(requestRef)
     const request = requestDoc.data() as FriendRequest
 
     if (!request) throw new Error('Zaproszenie nie istnieje')
+    
+    const [fromUserDoc, toUserDoc] = await Promise.all([
+      getDoc(doc(db, 'users', request.fromUserId)),
+      getDoc(doc(db, 'users', request.toUserId))
+    ])
+
+    const fromUserData = fromUserDoc.data()
+    const toUserData = toUserDoc.data()
 
     // Aktualizuj status zaproszenia
     await updateDoc(requestRef, {
-      status: 'accepted',
-      updatedAt: serverTimestamp()
+      status: 'accepted'
     })
 
     // Utwórz przyjaźń dla obu użytkowników
     const friendship1: Omit<Friendship, 'id'> = {
       userId: request.fromUserId,
       friendId: request.toUserId,
-      friendName: request.toUserName,
+      friendName: toUserData?.displayName || toUserData?.email || 'Uytkownik',
       createdAt: new Date(),
       moodVisibility: 'average',
       streak: 0
@@ -91,7 +115,7 @@ export const friendsService = {
     const friendship2: Omit<Friendship, 'id'> = {
       userId: request.toUserId,
       friendId: request.fromUserId,
-      friendName: request.fromUserName,
+      friendName: fromUserData?.displayName || fromUserData?.email || 'Uytkownik',
       createdAt: new Date(),
       moodVisibility: 'average',
       streak: 0
@@ -115,7 +139,7 @@ export const friendsService = {
   // Usuwanie przyjaciela
   async removeFriend(friendshipId: string) {
     const friendshipRef = doc(db, 'friendships', friendshipId)
-    const friendshipDoc = await getDocs(friendshipRef)
+    const friendshipDoc = await getDoc(friendshipRef)
     const friendship = friendshipDoc.data() as Friendship
 
     if (!friendship) return
