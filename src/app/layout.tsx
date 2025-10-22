@@ -9,8 +9,8 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'Spokój w głowie',
-  description: 'Architektura Uważności',
+  title: 'Unfog-go - Czysty umysł, lepsze życie',
+  description: 'Dołącz do użytkowników, którzy doznali uczucia czystego umysłu.',
 }
 
 export default function RootLayout({
