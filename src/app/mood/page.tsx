@@ -5,14 +5,16 @@ import { auth, db } from '@/lib/firebase'
 import { onAuthStateChanged } from 'firebase/auth'
 import { doc, onSnapshot } from 'firebase/firestore'
 import userService from '@/lib/user-service'
+import { XPService, XPSource } from '@/lib/xp-service'
 import Header from '@/components/layout/header'
 import { MoodEntryForm } from '@/components/mood-entry-form'
 import { AIMoodInsights } from '@/components/ai-mood-insights'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Calendar, BarChart3, ArrowRight, Heart, Edit, Sparkles, Target, TrendingUp, Zap, Brain } from 'lucide-react'
+import { ArrowLeft, Calendar, BarChart3, ArrowRight, Edit, Sparkles, Target, TrendingUp, Zap, Brain, Gift, Star } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
+import { motion, AnimatePresence } from 'framer-motion'
 
 interface MoodEntry {
   id: string
@@ -32,11 +34,11 @@ export default function MoodPage() {
   const [currentView, setCurrentView] = useState<MoodView>('mood-selection')
   const [isLoading, setIsLoading] = useState(false)
   const [streakData, setStreakData] = useState({ currentStreak: 0, longestStreak: 0 })
+  const [showXPReward, setShowXPReward] = useState(false)
+  const [xpAwarded, setXpAwarded] = useState(0)
 
   const calculateStreakFromEntries = (entries: MoodEntry[]): { currentStreak: number; longestStreak: number } => {
-    if (entries.length === 0) {
-      return { currentStreak: 0, longestStreak: 0 }
-    }
+    if (entries.length === 0) return { currentStreak: 0, longestStreak: 0 }
 
     try {
       const sortedEntries = [...entries].sort((a, b) => 
@@ -44,58 +46,28 @@ export default function MoodPage() {
       )
 
       let currentStreak = 0
-      let longestStreak = 0
-      
       const today = new Date()
       today.setHours(0, 0, 0, 0)
       
-      const hasTodayEntry = sortedEntries.some(entry => {
-        const entryDate = new Date(entry.timestamp)
-        entryDate.setHours(0, 0, 0, 0)
-        return entryDate.getTime() === today.getTime()
-      })
+      let checkDate = new Date(today)
+      let streakActive = true
 
-      const yesterday = new Date(today)
-      yesterday.setDate(yesterday.getDate() - 1)
-      
-      const hasYesterdayEntry = sortedEntries.some(entry => {
-        const entryDate = new Date(entry.timestamp)
-        entryDate.setHours(0, 0, 0, 0)
-        return entryDate.getTime() === yesterday.getTime()
-      })
+      while (streakActive) {
+        const hasEntry = sortedEntries.some(entry => {
+          const entryDate = new Date(entry.timestamp)
+          entryDate.setHours(0, 0, 0, 0)
+          return entryDate.getTime() === checkDate.getTime()
+        })
 
-      if (hasTodayEntry) {
-        currentStreak = 1
-        
-        let checkDate = new Date(yesterday)
-        let streakDays = 1
-        
-        while (true) {
-          const hasEntryOnDate = sortedEntries.some(entry => {
-            const entryDate = new Date(entry.timestamp)
-            entryDate.setHours(0, 0, 0, 0)
-            return entryDate.getTime() === checkDate.getTime()
-          })
-          
-          if (hasEntryOnDate) {
-            streakDays++
-            checkDate.setDate(checkDate.getDate() - 1)
-          } else {
-            break
-          }
+        if (hasEntry) {
+          currentStreak++
+          checkDate.setDate(checkDate.getDate() - 1)
+        } else {
+          streakActive = false
         }
-        
-        currentStreak = streakDays
-      } else if (hasYesterdayEntry) {
-        currentStreak = 1
       }
 
-      longestStreak = Math.max(longestStreak, currentStreak)
-
-      return {
-        currentStreak,
-        longestStreak
-      }
+      return { currentStreak, longestStreak: Math.max(currentStreak, streakData.longestStreak) }
     } catch (error) {
       console.error('Błąd obliczania streak:', error)
       return { currentStreak: 0, longestStreak: 0 }
@@ -146,38 +118,54 @@ export default function MoodPage() {
     
     try {
       await userService.saveMood(user.uid, mood)
+      
+      const isFirstMood = moodEntries.length === 0
+      const xpResult = await XPService.awardXP(
+        user.uid, 
+        isFirstMood ? XPSource.FIRST_MOOD : XPSource.MOOD_ENTRY
+      )
+      
+      if (xpResult.success) {
+        setXpAwarded(xpResult.xpAwarded)
+        setShowXPReward(true)
+        await XPService.awardStreakXP(user.uid, streakData.currentStreak + 1)
+      }
+      
       setCurrentMood(mood)
       setCurrentView('mood-review')
     } catch (error) {
       console.error('Błąd zapisu nastroju:', error)
-      alert('Błąd zapisu nastroju. Spróbuj ponownie.')
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handleSaveWithNote = async (data: { mood: number; note?: string }) => {
+  const handleSaveWithNote = async ({ mood, note }: { mood: number; note?: string }) => {
     if (!user) return
     setIsLoading(true)
     
     try {
-      await userService.saveMoodWithNote(user.uid, data.mood, data.note)
-      setCurrentMood(data.mood)
+      await userService.saveMoodWithNote(user.uid, mood, note)
+      
+      const isFirstMood = moodEntries.length === 0
+      const xpResult = await XPService.awardXP(
+        user.uid, 
+        isFirstMood ? XPSource.FIRST_MOOD : XPSource.MOOD_ENTRY
+      )
+      
+      if (xpResult.success) {
+        setXpAwarded(xpResult.xpAwarded)
+        setShowXPReward(true)
+        await XPService.awardStreakXP(user.uid, streakData.currentStreak + 1)
+      }
+      
+      setCurrentMood(mood)
       setCurrentView('mood-review')
     } catch (error) {
       console.error('Błąd zapisu:', error)
-      alert('Błąd zapisu. Spróbuj ponownie.')
     } finally {
       setIsLoading(false)
     }
-  }
-
-  const handleAddNote = () => {
-    setCurrentView('note-entry')
-  }
-
-  const handleViewNote = () => {
-    setCurrentView('note-entry')
   }
 
   const todayEntry = moodEntries.find(entry => isToday(new Date(entry.timestamp)))
@@ -187,9 +175,9 @@ export default function MoodPage() {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-100">
+      <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-500 border-t-transparent mx-auto mb-4" />
           <p className="text-gray-600">Ładowanie...</p>
         </div>
       </div>
@@ -197,21 +185,22 @@ export default function MoodPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-100">
+    <main className="min-h-screen bg-white">
       <Header />
       
-      <div className="px-4 py-8">
-        <div className="container mx-auto max-w-6xl">
-          <div className="flex items-center justify-between mb-8 p-4 rounded-2xl bg-white/95 backdrop-blur-sm border border-white/20 shadow-sm">
+      <div className="px-4 py-6">
+        <div className="container mx-auto max-w-4xl">
+          {/* Nagłówek */}
+          <div className="flex items-center justify-between mb-6">
             <Link href="/dashboard">
-              <Button variant="outline" className="border-gray-200 bg-white/80 hover:bg-white hover:border-gray-300 px-3 sm:px-4">
-                <ArrowLeft className="h-4 w-4 mr-1 sm:mr-2" />
-                <span className="text-sm sm:text-base">Powrót</span>
+              <Button variant="outline" className="text-gray-600 hover:text-gray-900">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Powrót
               </Button>
             </Link>
             
-            <div className="text-center flex-1 mx-2">
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-light text-gray-900 leading-tight">
+            <div className="text-center">
+              <h1 className="text-xl font-semibold text-gray-900">
                 {currentView === 'mood-selection' ? 'Jak się czujesz?' : 
                  currentView === 'note-entry' ? 'Dodaj notatkę' :
                  currentView === 'ai-insights' ? 'AI Insights' :
@@ -219,53 +208,44 @@ export default function MoodPage() {
               </h1>
             </div>
             
-            <div className="w-16 sm:w-24"></div>
+            <div className="w-20"></div>
           </div>
 
-          <div className="space-y-8">
+          <div className="space-y-6">
             {currentView === 'mood-selection' && (
-              <div className="mt-12">
-                <SimpleMoodPicker
-                  value={currentMood}
-                  onValueChange={setCurrentMood}
-                  moodEntries={moodEntries}
-                  streak={streakData.currentStreak}
-                  trend={moodTrend}
-                  consistency={consistency}
-                  averageMood={averageMood}
-                  level={userData?.level || 1}
-                  onSaveMood={handleSaveMood}
-                  onAddNote={handleAddNote}
-                  todayEntry={todayEntry}
-                />
-              </div>
+              <MoodSelectionView
+                currentMood={currentMood}
+                onMoodChange={setCurrentMood}
+                onSaveMood={handleSaveMood}
+                onAddNote={() => setCurrentView('note-entry')}
+                moodEntries={moodEntries}
+                streakData={streakData}
+                userData={userData}
+                moodTrend={moodTrend}
+                consistency={consistency}
+                averageMood={averageMood}
+                todayEntry={todayEntry}
+                isLoading={isLoading}
+              />
             )}
 
             {currentView === 'mood-review' && (
-              <MoodReview
+              <MoodReviewView
                 currentMood={currentMood}
                 todayEntry={todayEntry}
-                onEditNote={handleViewNote}
+                onEditNote={() => setCurrentView('note-entry')}
                 onViewAI={() => setCurrentView('ai-insights')}
               />
             )}
 
             {currentView === 'note-entry' && (
-              <div className="w-full max-w-2xl mx-auto">
-                <MoodEntryForm
-                  currentMood={currentMood}
-                  onSave={handleSaveWithNote}
-                  isLoading={isLoading}
-                  initialNote={todayEntry?.note}
-                />
-                <Button
-                  onClick={() => setCurrentView('mood-review')}
-                  variant="outline"
-                  className="w-full mt-4 border-gray-200 bg-white/80 hover:bg-white hover:border-gray-300"
-                >
-                  ← Wróć do przeglądu
-                </Button>
-              </div>
+              <NoteEntryView
+                currentMood={currentMood}
+                onSave={handleSaveWithNote}
+                isLoading={isLoading}
+                initialNote={todayEntry?.note}
+                onBack={() => setCurrentView('mood-review')}
+              />
             )}
 
             {currentView === 'ai-insights' && (
@@ -281,99 +261,380 @@ export default function MoodPage() {
               />
             )}
 
-            {/* POPRAWIONA SEKCJA Z WYKRESEM I HISTORIĄ */}
             {(currentView === 'mood-review' || currentView === 'ai-insights' || todayEntry) && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-12">
-                {/* NOWY PIĘKNIEJSZY WYKRES */}
-                <Card className="border-0 shadow-lg bg-white/95 backdrop-blur-sm border border-white/20">
-                  <CardHeader className="pb-4">
-                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg font-semibold text-gray-900">
-                      <BarChart3 className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
-                      Ostatnie 7 dni
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                    <BeautifulMoodChart moodEntries={moodEntries} />
-                  </CardContent>
-                </Card>
-
-                {/* OSTATNIE WPISY - TERAZ Z AKTYWNYM PRZYCISKIEM HISTORII */}
-                <Card className="border-0 shadow-lg bg-white/95 backdrop-blur-sm border border-white/20">
-                  <CardHeader className="pb-4">
-                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg font-semibold text-gray-900">
-                      <Calendar className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
-                      Ostatnie wpisy
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                    {moodEntries.length > 0 ? (
-                      <div className="space-y-3">
-                        {/* TYLKO 3 OSTATNIE WPISY */}
-                        {moodEntries.slice(0, 3).map(entry => (
-                          <div key={entry.id} className="flex items-center justify-between p-4 border border-gray-100 rounded-xl bg-white shadow-sm hover:shadow-md transition-all duration-200">
-                            <div className="flex items-center gap-3">
-                              <div className={cn(
-                                "w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-md",
-                                getMoodColorClass(entry.mood)
-                              )}>
-                                {entry.mood}%
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <div className="font-semibold text-gray-900 text-sm">
-                                  {formatDate(entry.timestamp)}
-                                </div>
-                                {/* PRAWDZIWA GODZINA WPISU */}
-                                <div className="text-xs text-gray-500 mt-1">
-                                  {formatExactTime(entry.timestamp)}
-                                </div>
-                                {entry.note && (
-                                  <div className="text-sm text-gray-600 line-clamp-1 mt-2">
-                                    {entry.note}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            <div className="text-2xl">
-                              {getMoodEmoji(entry.mood)}
-                            </div>
-                          </div>
-                        ))}
-                        
-                        {/* AKTYWNY PRZYCISK PEŁNEJ HISTORII */}
-                        <div className="pt-4">
-                          <Link href="/mood/history">
-                            <div className="flex items-center justify-center gap-2 p-3 bg-blue-50 rounded-xl border border-blue-100 text-blue-700 hover:text-blue-800 hover:bg-blue-100 transition-all duration-200 cursor-pointer">
-                              <span className="text-sm font-medium">Pełna historia</span>
-                              <ArrowRight className="h-4 w-4" />
-                            </div>
-                          </Link>
-                          <p className="text-xs text-gray-500 text-center mt-2">
-                            Zobacz kalendarz i pełną historię nastrojów
-                          </p>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-center py-8">
-                        <Heart className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                        <p className="text-gray-600 font-medium">Brak zapisanych nastrojów</p>
-                        <p className="text-gray-500 text-sm mt-2">
-                          Zacznij śledzić swój nastrój powyżej
-                        </p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
+              <ChartsSection moodEntries={moodEntries} />
             )}
           </div>
         </div>
       </div>
+
+      <XPRewardModal
+        show={showXPReward}
+        xpAmount={xpAwarded}
+        onClose={() => setShowXPReward(false)}
+      />
     </main>
   )
 }
 
-/* ------------------ NOWY PIĘKNIEJSZY WYKRES ------------------ */
-function BeautifulMoodChart({ moodEntries }: { moodEntries: MoodEntry[] }) {
+/* ==================== WIDOK WYBORU NASTROJU ==================== */
+
+interface MoodSelectionViewProps {
+  currentMood: number
+  onMoodChange: (mood: number) => void
+  onSaveMood: (mood: number) => void
+  onAddNote: () => void
+  moodEntries: MoodEntry[]
+  streakData: { currentStreak: number; longestStreak: number }
+  userData: any
+  moodTrend: number
+  consistency: number
+  averageMood: number
+  todayEntry: MoodEntry | undefined
+  isLoading: boolean
+}
+
+function MoodSelectionView({
+  currentMood,
+  onMoodChange,
+  onSaveMood,
+  onAddNote,
+  streakData,
+  userData,
+  moodTrend,
+  consistency,
+  averageMood,
+  todayEntry,
+  isLoading
+}: MoodSelectionViewProps) {
+  const moods = [
+    { value: 20, emoji: '😔', label: 'Bardzo niski' },
+    { value: 40, emoji: '😐', label: 'Niski' },
+    { value: 60, emoji: '🙂', label: 'Neutralny' },
+    { value: 80, emoji: '😊', label: 'Wysoki' },
+    { value: 100, emoji: '🤩', label: 'Bardzo wysoki' }
+  ]
+
+  const xpInfo = XPService.getLevelInfo(userData?.xp || 0)
+
+  return (
+    <div className="space-y-6">
+      {/* Statystyki */}
+      <div className="grid grid-cols-4 gap-3">
+        <div className="text-center p-3 bg-gray-50 rounded-lg">
+          <div className="flex items-center justify-center gap-1 mb-1">
+            <Zap className="h-3 w-3 text-orange-500" />
+            <div className="text-lg font-semibold">{streakData.currentStreak}</div>
+          </div>
+          <div className="text-xs text-gray-500">streak</div>
+        </div>
+
+        <div className="text-center p-3 bg-gray-50 rounded-lg">
+          <div className="text-lg font-semibold mb-1">Lvl {userData?.level || 1}</div>
+          <div className="text-xs text-gray-500">poziom</div>
+        </div>
+
+        <div className="text-center p-3 bg-gray-50 rounded-lg">
+          <div className="flex items-center justify-center gap-1 mb-1">
+            <TrendingUp className="h-3 w-3 text-blue-500" />
+            <div className="text-lg font-semibold">{averageMood}%</div>
+          </div>
+          <div className="text-xs text-gray-500">średnia</div>
+        </div>
+
+        <div className="text-center p-3 bg-gray-50 rounded-lg">
+          <div className="flex items-center justify-center gap-1 mb-1">
+            <Target className="h-3 w-3 text-green-500" />
+            <div className="text-lg font-semibold">{consistency}%</div>
+          </div>
+          <div className="text-xs text-gray-500">konsystencja</div>
+        </div>
+      </div>
+
+      {/* Pasek postępu XP */}
+      <div className="p-3 bg-purple-50 rounded-lg">
+        <div className="flex items-center justify-between mb-1 text-xs">
+          <span className="text-purple-700 font-medium">Poziom {userData?.level || 1}</span>
+          <span className="text-purple-700 font-medium">{Math.round(xpInfo.xpProgress)}%</span>
+        </div>
+        <div className="w-full bg-white rounded-full h-2 overflow-hidden">
+          <motion.div
+            initial={{ width: 0 }}
+            animate={{ width: `${xpInfo.xpProgress}%` }}
+            transition={{ duration: 1 }}
+            className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full"
+          />
+        </div>
+      </div>
+
+      {/* Wybór nastroju */}
+      <Card className="border border-gray-200">
+        <CardContent className="p-6">
+          <div className="text-center space-y-6">
+            <h2 className="text-xl font-semibold text-gray-900">Jak się czujesz dzisiaj?</h2>
+            
+            {/* Suwak */}
+            <div className="px-4">
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={currentMood}
+                onChange={(e) => onMoodChange(Number(e.target.value))}
+                className="w-full h-2 bg-gradient-to-r from-gray-400 via-blue-400 via-green-400 via-purple-400 to-pink-500 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-purple-500"
+              />
+              <div className="flex justify-between mt-2 text-sm text-gray-600">
+                <span>😔 Niski</span>
+                <span>🤩 Wysoki</span>
+              </div>
+            </div>
+
+            {/* Przyciski nastroju */}
+            <div className="grid grid-cols-5 gap-2">
+              {moods.map((mood, index) => (
+                <button
+                  key={mood.value}
+                  onClick={() => onMoodChange(mood.value)}
+                  className={cn(
+                    "flex flex-col items-center p-3 rounded-lg border transition-all",
+                    currentMood === mood.value
+                      ? "bg-blue-50 border-blue-200 text-blue-700"
+                      : "bg-white border-gray-200 text-gray-700 hover:border-gray-300"
+                  )}
+                >
+                  <span className="text-2xl mb-1">{mood.emoji}</span>
+                  <span className="text-xs font-medium">{mood.value}%</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Wyświetlanie aktualnego nastroju */}
+            <div className="space-y-2">
+              <div className={cn(
+                "inline-flex items-center gap-3 px-6 py-3 rounded-xl text-white font-semibold",
+                getMoodBackgroundClass(currentMood)
+              )}>
+                <span className="text-2xl">{getMoodEmoji(currentMood)}</span>
+                <span>{currentMood}% - {getMoodLabel(currentMood)}</span>
+              </div>
+              <p className="text-gray-600 text-sm">
+                {getMoodDescription(currentMood)}
+              </p>
+            </div>
+
+            {/* Przyciski akcji */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Button
+                onClick={() => onSaveMood(currentMood)}
+                disabled={isLoading}
+                className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+              >
+                {isLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
+                    Zapisywanie...
+                  </>
+                ) : (
+                  <>
+                    <Gift className="h-4 w-4 mr-2" />
+                    Zapisz nastrój (+10 XP)
+                  </>
+                )}
+              </Button>
+              
+              <Button
+                onClick={onAddNote}
+                variant="outline"
+                className="flex-1 py-3 border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold"
+              >
+                <Edit className="h-4 w-4 mr-2" />
+                Dodaj notatkę
+              </Button>
+            </div>
+
+            {todayEntry && (
+              <p className="text-green-600 text-sm font-medium">
+                Masz już zapisany nastrój na dzisiaj ({todayEntry.mood}%)
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+/* ==================== WIDOK PRZEGLĄDU NASTROJU ==================== */
+
+function MoodReviewView({ currentMood, todayEntry, onEditNote, onViewAI }: any) {
+  return (
+    <Card className="border border-gray-200">
+      <CardContent className="p-6">
+        <div className="text-center space-y-6">
+          <div className="flex flex-col items-center space-y-4">
+            <div className="text-6xl">{getMoodEmoji(currentMood)}</div>
+            
+            <div className={cn(
+              "px-6 py-3 rounded-xl text-white font-semibold",
+              getMoodBackgroundClass(currentMood)
+            )}>
+              {currentMood}%
+            </div>
+            
+            <div className="space-y-1">
+              <h3 className="text-xl font-semibold text-gray-900">
+                {getMoodLabel(currentMood)}
+              </h3>
+              <p className="text-gray-600">
+                {getMoodDescription(currentMood)}
+              </p>
+            </div>
+          </div>
+
+          {todayEntry?.note && (
+            <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
+              <h4 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
+                <Edit className="h-4 w-4" />
+                Twoja notatka
+              </h4>
+              <p className="text-blue-800 text-sm">
+                {todayEntry.note}
+              </p>
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button
+              onClick={onEditNote}
+              variant={todayEntry?.note ? "outline" : "primary"}
+              className={cn(
+                "flex-1 py-3 font-semibold",
+                todayEntry?.note 
+                  ? "border-gray-300 text-gray-700 hover:bg-gray-50" 
+                  : "bg-blue-600 hover:bg-blue-700 text-white"
+              )}
+            >
+              <Edit className="h-4 w-4 mr-2" />
+              {todayEntry?.note ? 'Edytuj notatkę' : 'Dodaj notatkę'}
+            </Button>
+            
+            <Button
+              onClick={onViewAI}
+              className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold"
+            >
+              <Brain className="h-4 w-4 mr-2" />
+              AI Insights
+            </Button>
+          </div>
+
+          <p className="text-gray-500 text-sm">
+            {todayEntry?.timestamp ? (
+              <>Nastrój zapisany {formatTimestamp(todayEntry.timestamp)}</>
+            ) : (
+              <>Nastrój zapisany dzisiaj</>
+            )}
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+/* ==================== WIDOK DODAWANIA NOTATKI ==================== */
+
+function NoteEntryView({ currentMood, onSave, isLoading, initialNote, onBack }: any) {
+  const [note, setNote] = useState(initialNote || '')
+
+  return (
+    <div className="space-y-4">
+      <Card className="border border-gray-200">
+        <CardContent className="p-6">
+          <div className="text-center mb-4">
+            <div className={cn(
+              "inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white font-semibold text-sm",
+              getMoodBackgroundClass(currentMood)
+            )}>
+              <span className="text-xl">{getMoodEmoji(currentMood)}</span>
+              <span>{currentMood}%</span>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Dodaj notatkę (opcjonalnie)
+              </label>
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Jak się czujesz? Co wpłynęło na Twój nastrój?"
+                className="w-full h-32 px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                onClick={onBack}
+                variant="outline"
+                className="flex-1 py-3 border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold"
+              >
+                Wróć
+              </Button>
+              
+              <Button
+                onClick={() => onSave({ mood: currentMood, note })}
+                disabled={isLoading}
+                className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+              >
+                {isLoading ? 'Zapisywanie...' : 'Zapisz'}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+/* ==================== SEKCJA WYKRESÓW ==================== */
+
+function ChartsSection({ moodEntries }: { moodEntries: MoodEntry[] }) {
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* Wykres */}
+      <Card className="border border-gray-200">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base font-semibold">
+            <BarChart3 className="h-4 w-4 text-blue-600" />
+            Ostatnie 7 dni
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <AdvancedMoodChart moodEntries={moodEntries} />
+        </CardContent>
+      </Card>
+
+      {/* Ostatnie wpisy */}
+      <Card className="border border-gray-200">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base font-semibold">
+            <Calendar className="h-4 w-4 text-purple-600" />
+            Ostatnie wpisy
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <SimpleRecentEntries moodEntries={moodEntries} />
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+/* ==================== MINIMALISTYCZNY WYKRES ==================== */
+
+function AdvancedMoodChart({ moodEntries }: { moodEntries: MoodEntry[] }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  
   const getLast7Days = () => {
     const days = []
     for (let i = 6; i >= 0; i--) {
@@ -381,309 +642,274 @@ function BeautifulMoodChart({ moodEntries }: { moodEntries: MoodEntry[] }) {
       date.setDate(date.getDate() - i)
       days.push({
         date,
-        label: date.toLocaleDateString('pl-PL', { weekday: 'short' })
+        label: date.toLocaleDateString('pl-PL', { weekday: 'narrow' })
       })
     }
     return days
   }
 
-  const chartData = getLast7Days().map(day => {
+  const chartData = getLast7Days().map((day, index) => {
     const entry = moodEntries.find(e => 
       new Date(e.timestamp).toDateString() === day.date.toDateString()
     )
     return {
-      date: day.label,
+      ...day,
       mood: entry ? entry.mood : null,
-      fullDate: day.date
+      index
     }
   })
 
-  const getMoodColor = (mood: number | null) => {
-    if (mood === null) return '#e5e7eb'
-    if (mood <= 20) return '#6b7280'
-    if (mood <= 40) return '#3b82f6'
-    if (mood <= 60) return '#10b981'
-    if (mood <= 80) return '#8b5cf6'
-    return '#f43f5e'
-  }
-
-  const getMoodHeight = (mood: number | null) => {
-    if (mood === null) return '10%'
-    return `${mood}%`
-  }
-
   return (
-    <div className="w-full h-48 sm:h-56">
-      <div className="flex items-end justify-between h-full space-x-1 sm:space-x-2">
+    <div className="w-full space-y-4">
+      {/* Wykres */}
+      <div className="flex items-end justify-between h-32 space-x-1">
+        {chartData.map((day) => (
+          <ChartColumn 
+            key={day.index}
+            day={day}
+            isHovered={hoveredIndex === day.index}
+            onHover={setHoveredIndex}
+          />
+        ))}
+      </div>
+
+      {/* Dni tygodnia */}
+      <div className="flex justify-between px-1">
         {chartData.map((day, index) => (
-          <div key={index} className="flex flex-col items-center flex-1 space-y-2">
-            <div className="relative w-full flex justify-center">
-              <div 
-                className={cn(
-                  "w-3/4 sm:w-10/12 rounded-t-lg transition-all duration-500 ease-out",
-                  day.mood === null ? "bg-gray-200" : "shadow-lg"
-                )}
-                style={{ 
-                  height: getMoodHeight(day.mood),
-                  backgroundColor: getMoodColor(day.mood)
-                }}
-              >
-                {day.mood !== null && (
-                  <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 text-xs font-bold text-gray-700">
-                    {day.mood}%
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="text-xs text-gray-600 font-medium text-center">
-              {day.date}
-            </div>
-            <div className="text-xs text-gray-400">
-              {day.fullDate.getDate()}/{day.fullDate.getMonth() + 1}
-            </div>
+          <div
+            key={index}
+            className={cn(
+              "text-sm font-medium text-center min-w-[30px]",
+              day.index === 6 ? "text-blue-600" : "text-gray-500"
+            )}
+          >
+            {day.label}
           </div>
         ))}
       </div>
-      
-      {/* Linia trendu */}
-      <div className="mt-6 pt-4 border-t border-gray-200">
-        <div className="flex justify-between items-center text-xs text-gray-600">
-          <span>Niski nastrój</span>
-          <span>Wysoki nastrój</span>
+
+      {/* Legenda */}
+      <div className="flex justify-center gap-4">
+        <div className="flex items-center gap-1 text-xs">
+          <div className="w-2 h-2 bg-gray-400 rounded-sm" />
+          <span className="text-gray-600">😔</span>
         </div>
-        <div className="w-full h-1 bg-gradient-to-r from-gray-400 via-blue-400 via-green-400 via-purple-400 to-rose-400 rounded-full mt-1"></div>
+        <div className="flex items-center gap-1 text-xs">
+          <div className="w-2 h-2 bg-blue-400 rounded-sm" />
+          <span className="text-gray-600">😐</span>
+        </div>
+        <div className="flex items-center gap-1 text-xs">
+          <div className="w-2 h-2 bg-green-400 rounded-sm" />
+          <span className="text-gray-600">🙂</span>
+        </div>
+        <div className="flex items-center gap-1 text-xs">
+          <div className="w-2 h-2 bg-purple-400 rounded-sm" />
+          <span className="text-gray-600">😊</span>
+        </div>
+        <div className="flex items-center gap-1 text-xs">
+          <div className="w-2 h-2 bg-pink-400 rounded-sm" />
+          <span className="text-gray-600">🤩</span>
+        </div>
       </div>
     </div>
   )
 }
 
-/* ------------------ PROSTY MOOD PICKER ------------------ */
-function SimpleMoodPicker({ 
-  value, 
-  onValueChange, 
-  onSaveMood, 
-  onAddNote, 
-  streak,
-  todayEntry 
-}: any) {
-  const moods = [
-    { value: 20, emoji: '😔', label: 'Bardzo niski', color: 'bg-gray-500' },
-    { value: 40, emoji: '😐', label: 'Niski', color: 'bg-blue-500' },
-    { value: 60, emoji: '🙂', label: 'Neutralny', color: 'bg-green-500' },
-    { value: 80, emoji: '😊', label: 'Wysoki', color: 'bg-purple-500' },
-    { value: 100, emoji: '🤩', label: 'Bardzo wysoki', color: 'bg-rose-500' }
-  ]
+function ChartColumn({ day, isHovered, onHover }: any) {
+  const getBarColor = (mood: number | null) => {
+    if (mood === null) return 'bg-gray-200'
+    if (mood <= 20) return 'bg-gray-400'
+    if (mood <= 40) return 'bg-blue-400'
+    if (mood <= 60) return 'bg-green-400'
+    if (mood <= 80) return 'bg-purple-400'
+    return 'bg-pink-400'
+  }
+
+  const getBarHeight = (mood: number | null) => {
+    if (mood === null) return 8
+    return Math.max((mood / 100) * 100, 12)
+  }
+
+  const height = getBarHeight(day.mood)
 
   return (
-    <div className="w-full max-w-4xl mx-auto">
-      <Card className="border-0 shadow-2xl bg-white/95 backdrop-blur-sm border border-white/20">
-        <CardContent className="p-8">
-          {/* Stats Header */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl border border-blue-200">
-              <div className="flex items-center justify-center gap-1 mb-1">
-                <Zap className="h-4 w-4 text-blue-600" />
-                <div className="font-bold text-blue-600 text-xl">{streak}</div>
-              </div>
-              <div className="text-sm text-blue-600">dni streak</div>
+    <motion.div
+      className="flex flex-col items-center flex-1 relative group"
+      onMouseEnter={() => onHover(day.index)}
+      onMouseLeave={() => onHover(null)}
+      initial={{ opacity: 0, scaleY: 0 }}
+      animate={{ opacity: 1, scaleY: 1 }}
+      transition={{ 
+        delay: day.index * 0.1, 
+        type: "spring", 
+        stiffness: 200 
+      }}
+    >
+      {/* Tooltip */}
+      <AnimatePresence>
+        {isHovered && day.mood !== null && (
+          <motion.div
+            initial={{ opacity: 0, y: -5 }}
+            animate={{ opacity: 1, y: -8 }}
+            exit={{ opacity: 0, y: -5 }}
+            className="absolute -top-8 left-1/2 transform -translate-x-1/2 z-10"
+          >
+            <div className="bg-gray-800 text-white px-2 py-1 rounded text-xs font-medium whitespace-nowrap">
+              {day.mood}%
             </div>
-            <div className="text-center p-4 bg-gradient-to-br from-green-50 to-green-100 rounded-2xl border border-green-200">
-              <div className="flex items-center justify-center gap-1 mb-1">
-                <Target className="h-4 w-4 text-green-600" />
-                <div className="font-bold text-green-600 text-xl">{todayEntry ? 'Dzisiaj' : 'Brak'}</div>
-              </div>
-              <div className="text-sm text-green-600">dzisiejszy wpis</div>
-            </div>
-            <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-2xl border border-purple-200">
-              <div className="flex items-center justify-center gap-1 mb-1">
-                <TrendingUp className="h-4 w-4 text-purple-600" />
-                <div className="font-bold text-purple-600 text-xl">{value}%</div>
-              </div>
-              <div className="text-sm text-purple-600">twój nastrój</div>
-            </div>
-            <div className="text-center p-4 bg-gradient-to-br from-amber-50 to-amber-100 rounded-2xl border border-amber-200">
-              <div className="flex items-center justify-center gap-1 mb-1">
-                <Sparkles className="h-4 w-4 text-amber-600" />
-                <div className="font-bold text-amber-600 text-xl">Poziom 1</div>
-              </div>
-              <div className="text-sm text-amber-600">twoje konto</div>
-            </div>
-          </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-          {/* Mood Selection */}
-          <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">
-              Jak się czujesz dzisiaj?
-            </h2>
-            
-            {/* Mood Slider */}
-            <div className="mb-8">
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={value}
-                onChange={(e) => onValueChange(Number(e.target.value))}
-                className="w-full h-3 bg-gradient-to-r from-gray-400 via-blue-400 via-green-400 via-purple-400 to-rose-400 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-4 [&::-webkit-slider-thumb]:border-gray-300 [&::-webkit-slider-thumb]:shadow-lg"
-              />
-              <div className="flex justify-between mt-2 text-sm text-gray-600">
-                <span>Bardzo niski</span>
-                <span>Bardzo wysoki</span>
-              </div>
-            </div>
-
-            {/* Mood Buttons */}
-            <div className="grid grid-cols-5 gap-3 mb-8">
-              {moods.map((mood) => (
-                <button
-                  key={mood.value}
-                  onClick={() => onValueChange(mood.value)}
-                  className={cn(
-                    "flex flex-col items-center p-4 rounded-2xl border-2 transition-all duration-300",
-                    value === mood.value
-                      ? `${mood.color} border-white text-white shadow-lg scale-105`
-                      : "bg-white border-gray-200 text-gray-700 hover:border-gray-300 hover:shadow-md"
-                  )}
-                >
-                  <span className="text-2xl mb-2">{mood.emoji}</span>
-                  <span className="text-sm font-medium">{mood.label}</span>
-                  <span className="text-xs opacity-75 mt-1">{mood.value}%</span>
-                </button>
-              ))}
-            </div>
-
-            {/* Current Mood Display */}
-            <div className="mb-8">
-              <div className={cn(
-                "inline-flex items-center gap-4 px-6 py-4 rounded-2xl text-white font-bold text-xl shadow-lg",
-                getMoodBackgroundClass(value)
-              )}>
-                <span className="text-2xl">{getMoodEmoji(value)}</span>
-                <span>{value}% - {getMoodLabel(value)}</span>
-              </div>
-              <p className="text-gray-600 mt-3 text-lg">
-                {getMoodDescription(value)}
-              </p>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row gap-4">
-              <Button
-                onClick={() => onSaveMood(value)}
-                className="flex-1 py-4 text-lg font-semibold rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transition-all duration-300"
-                size="lg"
-              >
-                <Sparkles className="h-5 w-5 mr-2" />
-                Zapisz nastrój
-              </Button>
-              
-              <Button
-                onClick={onAddNote}
-                variant="outline"
-                className="flex-1 py-4 text-lg font-semibold rounded-xl border-2 border-gray-300 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-300"
-                size="lg"
-              >
-                <Edit className="h-5 w-5 mr-2" />
-                Dodaj notatkę
-              </Button>
-            </div>
-
-            {todayEntry && (
-              <p className="text-sm text-gray-500 mt-4">
-                ✅ Masz już zapisany nastrój na dzisiaj ({todayEntry.mood}%)
-              </p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+      {/* Kolumna */}
+      <div className="relative w-6 flex justify-center">
+        <motion.div
+          className={cn(
+            "w-4 rounded-t transition-all duration-200",
+            getBarColor(day.mood)
+          )}
+          style={{ height: `${height}px` }}
+          whileHover={{ 
+            scale: 1.1,
+            transition: { duration: 0.1 }
+          }}
+          animate={{
+            opacity: isHovered ? 0.9 : 0.7,
+          }}
+        >
+          {/* Efekt aktywnej kolumny */}
+          {isHovered && (
+            <motion.div 
+              className="absolute inset-0 bg-white/30 rounded-t"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+            />
+          )}
+        </motion.div>
+      </div>
+    </motion.div>
   )
 }
 
-/* ------------------ PRZEGLĄD NASTROJU ------------------ */
-function MoodReview({ currentMood, todayEntry, onEditNote, onViewAI }: any) {
+/* ==================== UPROSZCZONE OSTATNIE WPISY ==================== */
+
+function SimpleRecentEntries({ moodEntries }: { moodEntries: MoodEntry[] }) {
+  if (moodEntries.length === 0) {
+    return (
+      <div className="text-center py-6">
+        <div className="text-gray-400 text-sm">Brak zapisanych nastrojów</div>
+      </div>
+    )
+  }
+
   return (
-    <div className="w-full max-w-2xl mx-auto">
-      <Card className="border-0 shadow-xl bg-white/95 backdrop-blur-sm border border-white/20">
-        <CardContent className="p-8">
-          <div className="text-center space-y-8">
-            <div className="flex flex-col items-center space-y-6">
-              <div className="text-8xl mb-4 mt-8">
-                {getMoodEmoji(currentMood)}
-              </div>
-              
-              <div className={cn(
-                "px-6 py-3 rounded-2xl font-bold text-2xl",
-                getMoodBackgroundClass(currentMood),
-                "text-white shadow-lg"
-              )}>
-                {currentMood}%
-              </div>
-              
-              <div className="space-y-3">
-                <h3 className="text-3xl font-bold text-gray-900">
-                  {getMoodLabel(currentMood)}
-                </h3>
-                <p className="text-gray-600 text-lg font-medium">
-                  {getMoodDescription(currentMood)}
-                </p>
-              </div>
+    <div className="space-y-2">
+      {moodEntries.slice(0, 4).map((entry, index) => (
+        <motion.div
+          key={entry.id}
+          initial={{ opacity: 0, x: -10 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: index * 0.1 }}
+          className="flex items-center justify-between p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className={cn(
+              "w-6 h-6 rounded-md flex items-center justify-center text-white text-xs font-medium", // Zmienione z w-8 h-8 na w-6 h-6 i text-sm na text-xs
+              getMoodColorClass(entry.mood)
+            )}>
+              {entry.mood}%
             </div>
-
-            {todayEntry?.note && (
-              <div className="bg-blue-50 rounded-2xl p-6 border border-blue-200 shadow-sm">
-                <h4 className="font-bold text-blue-900 mb-4 flex items-center gap-3 text-lg">
-                  <Edit className="h-5 w-5" />
-                  Twoja notatka
-                </h4>
-                <p className="text-blue-800 text-base leading-relaxed font-medium">
-                  {todayEntry.note}
-                </p>
+            <div>
+              <div className="text-sm font-medium text-gray-800">
+                {formatDate(entry.timestamp)}
               </div>
-            )}
-
-            <div className="flex flex-col sm:flex-row gap-4 pt-8">
-              <Button
-                onClick={onEditNote}
-                variant={todayEntry?.note ? "outline" : "primary"}
-                className={cn(
-                  "flex-1 py-4 text-base font-semibold rounded-xl",
-                  todayEntry?.note 
-                    ? "border-2 border-gray-300 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400" 
-                    : "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl"
-                )}
-              >
-                <Edit className="h-5 w-5 mr-2" />
-                {todayEntry?.note ? 'Edytuj notatkę' : 'Dodaj notatkę'}
-              </Button>
-              
-              <Button
-                onClick={onViewAI}
-                className="flex-1 py-4 text-base font-semibold rounded-xl bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white shadow-lg hover:shadow-xl"
-              >
-                <Brain className="h-5 w-5 mr-2" />
-                AI Insights
-              </Button>
-            </div>
-
-            <p className="text-sm text-gray-500 text-center pt-6 font-medium">
-              {todayEntry?.timestamp ? (
-                <>Nastrój zapisany {formatTimestamp(todayEntry.timestamp)}</>
-              ) : (
-                <>Nastrój zapisany dzisiaj o {new Date().toLocaleTimeString('pl-PL', { 
-                  hour: '2-digit', 
-                  minute: '2-digit' 
-                })}</>
+              {entry.note && (
+                <div className="text-xs text-gray-600 line-clamp-1">
+                  {entry.note}
+                </div>
               )}
-            </p>
+            </div>
           </div>
-        </CardContent>
-      </Card>
+          <div className="text-xl">
+            {getMoodEmoji(entry.mood)}
+          </div>
+        </motion.div>
+      ))}
+      
+      {moodEntries.length > 4 && (
+        <Link href="/mood/history">
+          <div className="flex items-center justify-center gap-1 p-3 text-blue-600 hover:text-blue-700 transition-colors cursor-pointer">
+            <span className="text-sm font-medium">Pełna historia</span>
+            <ArrowRight className="h-4 w-4" />
+          </div>
+        </Link>
+      )}
     </div>
   )
 }
 
-/* ------------------ FUNKCJE POMOCNICZE ------------------ */
+/* ==================== MODAL NAGRODY XP ==================== */
+
+function XPRewardModal({ show, xpAmount, onClose }: { show: boolean; xpAmount: number; onClose: () => void }) {
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+          onClick={onClose}
+        >
+          <motion.div
+            initial={{ scale: 0.5, y: 50, opacity: 0 }}
+            animate={{ scale: 1, y: 0, opacity: 1 }}
+            exit={{ scale: 0.5, y: 50, opacity: 0 }}
+            transition={{ type: "spring", damping: 15 }}
+            className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-center">
+              <motion.div
+                animate={{ 
+                  scale: [1, 1.1, 1],
+                  rotate: [0, -5, 5, 0]
+                }}
+                transition={{ duration: 0.6 }}
+                className="inline-block mb-4"
+              >
+                <Gift className="h-16 w-16 text-amber-500 mx-auto" />
+              </motion.div>
+              
+              <h2 className="text-xl font-bold text-gray-900 mb-2">
+                Gratulacje! 🎉
+              </h2>
+              
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500 rounded-lg text-white font-bold text-lg mb-4">
+                <Sparkles className="h-4 w-4" />
+                <span>+{xpAmount} XP</span>
+              </div>
+              
+              <p className="text-gray-600 mb-6">
+                Za dodanie nastroju!
+              </p>
+              
+              <Button
+                onClick={onClose}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+              >
+                Super! 🚀
+              </Button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
+/* ==================== FUNKCJE POMOCNICZE ==================== */
+
 function isToday(date: Date) {
   const today = new Date()
   return date.toDateString() === today.toDateString()
@@ -727,11 +953,11 @@ function getMoodDescription(mood: number): string {
 }
 
 function getMoodColorClass(mood: number): string {
-  if (mood <= 20) return 'bg-gray-600 shadow-gray-700/50'
-  if (mood <= 40) return 'bg-blue-600 shadow-blue-700/50'
-  if (mood <= 60) return 'bg-green-600 shadow-green-700/50'
-  if (mood <= 80) return 'bg-purple-600 shadow-purple-700/50'
-  return 'bg-rose-600 shadow-rose-700/50'
+  if (mood <= 20) return 'bg-gray-500'
+  if (mood <= 40) return 'bg-blue-500'
+  if (mood <= 60) return 'bg-green-500'
+  if (mood <= 80) return 'bg-purple-500'
+  return 'bg-pink-500'
 }
 
 function getMoodBackgroundClass(mood: number): string {
@@ -739,7 +965,7 @@ function getMoodBackgroundClass(mood: number): string {
   if (mood <= 40) return 'bg-blue-500'
   if (mood <= 60) return 'bg-green-500'
   if (mood <= 80) return 'bg-purple-500'
-  return 'bg-rose-500'
+  return 'bg-pink-500'
 }
 
 function getMoodEmoji(mood: number): string {
@@ -783,20 +1009,10 @@ function formatTimestamp(timestamp: Date): string {
   } else {
     return `${date.toLocaleDateString('pl-PL', { 
       day: 'numeric', 
-      month: 'long',
-      year: 'numeric'
+      month: 'long'
     })} o ${date.toLocaleTimeString('pl-PL', { 
       hour: '2-digit', 
       minute: '2-digit' 
     })}`
   }
-}
-
-// NOWA FUNKCJA DO FORMATOWANIA DOKŁADNEGO CZASU
-function formatExactTime(timestamp: Date): string {
-  const date = new Date(timestamp)
-  return date.toLocaleTimeString('pl-PL', { 
-    hour: '2-digit', 
-    minute: '2-digit' 
-  })
 }

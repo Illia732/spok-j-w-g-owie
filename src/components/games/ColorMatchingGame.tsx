@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Play, Pause, RotateCcw, Volume2, VolumeX, Palette, Target, Sparkles, Home, Award } from 'lucide-react'
+import { Play, Pause, RotateCcw, Volume2, VolumeX, Palette, Target, Sparkles, Home, Award, Gift } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 type GameState = 'intro' | 'playing' | 'completion'
@@ -15,7 +15,11 @@ interface Tile {
   isMatched: boolean
 }
 
-export const ColorMatchingGame: React.FC = () => {
+interface ColorMatchingGameProps {
+  onComplete?: (difficulty: Difficulty) => void
+}
+
+export const ColorMatchingGame: React.FC<ColorMatchingGameProps> = ({ onComplete }) => {
   const router = useRouter()
   const [gameState, setGameState] = useState<GameState>('intro')
   const [isPlaying, setIsPlaying] = useState(false)
@@ -27,13 +31,14 @@ export const ColorMatchingGame: React.FC = () => {
   const [tiles, setTiles] = useState<Tile[]>([])
   const [flippedTiles, setFlippedTiles] = useState<string[]>([])
   const [gameCompleted, setGameCompleted] = useState(false)
+  const [showXPReward, setShowXPReward] = useState(false)
 
   const timerRef = useRef<NodeJS.Timeout>()
 
   const difficultyConfig = {
     zen: {
       name: 'Zen',
-      description: 'Relaks bez limitu czasu - 1 XP za ukończenie',
+      description: 'Relaks bez limitu czasu',
       time: 0,
       pairs: 4,
       colors: ['#f87171', '#60a5fa', '#34d399', '#fbbf24'],
@@ -41,7 +46,7 @@ export const ColorMatchingGame: React.FC = () => {
     },
     chill: {
       name: 'Chill', 
-      description: 'Relaks z lekkim wyzwaniem - 3 XP za ukończenie',
+      description: 'Relaks z lekkim wyzwaniem',
       time: 120,
       pairs: 6,
       colors: ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'],
@@ -49,7 +54,7 @@ export const ColorMatchingGame: React.FC = () => {
     },
     flow: {
       name: 'Flow',
-      description: 'Wyzwanie z limitem czasu - 5 XP za ukończenie',
+      description: 'Wyzwanie z limitem czasu',
       time: 90,
       pairs: 8,
       colors: ['#dc2626', '#2563eb', '#059669', '#d97706', '#7c3aed', '#db2777', '#06b6d4', '#84cc16'],
@@ -62,7 +67,6 @@ export const ColorMatchingGame: React.FC = () => {
     const config = difficultyConfig[difficulty]
     const tiles: Tile[] = []
     
-    // Dla każdego koloru tworzymy 2 takie same tile
     config.colors.slice(0, config.pairs).forEach(color => {
       const tile1: Tile = {
         id: `tile-${color}-1-${Math.random()}`,
@@ -79,11 +83,9 @@ export const ColorMatchingGame: React.FC = () => {
       tiles.push(tile1, tile2)
     })
     
-    // Potasuj tiles
     return tiles.sort(() => Math.random() - 0.5)
   }
 
-  // Inicjalizuj grę
   const initializeGame = () => {
     const config = difficultyConfig[difficulty]
     const newTiles = generateTiles()
@@ -94,30 +96,26 @@ export const ColorMatchingGame: React.FC = () => {
     setFlippedTiles([])
     setTimeLeft(config.time)
     setGameCompleted(false)
+    setShowXPReward(false)
   }
 
-  // Sprawdź czy wszystkie tile są dopasowane
   const checkAllMatched = (currentTiles: Tile[]): boolean => {
     return currentTiles.every(tile => tile.isMatched)
   }
 
-  // Obsłuż kliknięcie tile - ZOPTYMALIZOWANE
   const handleTileClick = (clickedTileId: string) => {
     if (!isPlaying || flippedTiles.length >= 2) return
 
     const clickedTile = tiles.find(t => t.id === clickedTileId)
     if (!clickedTile || clickedTile.isFlipped || clickedTile.isMatched) return
 
-    // Odwróć tile - natychmiastowa aktualizacja
     const newFlippedTiles = [...flippedTiles, clickedTileId]
     setFlippedTiles(newFlippedTiles)
     
-    // Bezpośrednia aktualizacja bez animacji
     setTiles(prev => prev.map(t => 
       t.id === clickedTileId ? { ...t, isFlipped: true } : t
     ))
 
-    // Sprawdź dopasowanie po odwróceniu drugiego tile
     if (newFlippedTiles.length === 2) {
       setMoves(prev => prev + 1)
       
@@ -126,7 +124,6 @@ export const ColorMatchingGame: React.FC = () => {
       const secondTile = tiles.find(t => t.id === secondId)
 
       if (firstTile && secondTile && firstTile.color === secondTile.color) {
-        // Dopasowanie! - krótszy timeout
         setTimeout(() => {
           setTiles(prev => {
             const updatedTiles = prev.map(t => 
@@ -135,7 +132,6 @@ export const ColorMatchingGame: React.FC = () => {
                 : t
             )
             
-            // Sprawdź czy wszystkie dopasowane
             if (checkAllMatched(updatedTiles)) {
               setGameCompleted(true)
               setTimeout(() => handleGameComplete(), 100)
@@ -145,9 +141,8 @@ export const ColorMatchingGame: React.FC = () => {
           })
           setScore(prev => prev + 10)
           setFlippedTiles([])
-        }, 200) // Zmniejszone z 500ms
+        }, 200)
       } else {
-        // Nie dopasowano - odwróć z powrotem po krótszej chwili
         setTimeout(() => {
           setTiles(prev => prev.map(t => 
             newFlippedTiles.includes(t.id) 
@@ -155,7 +150,7 @@ export const ColorMatchingGame: React.FC = () => {
               : t
           ))
           setFlippedTiles([])
-        }, 400) // Zmniejszone z 1000ms
+        }, 400)
       }
     }
   }
@@ -168,6 +163,10 @@ export const ColorMatchingGame: React.FC = () => {
     
     setIsPlaying(false)
     setGameState('completion')
+    setShowXPReward(true)
+    
+    // 🎁 Wywołaj callback z poziomem trudności
+    onComplete?.(difficulty)
   }
 
   const handleStartGame = () => {
@@ -183,6 +182,7 @@ export const ColorMatchingGame: React.FC = () => {
   const handleResetGame = () => {
     setIsPlaying(false)
     setGameState('intro')
+    setShowXPReward(false)
   }
 
   const handleBackToGames = () => {
@@ -215,7 +215,97 @@ export const ColorMatchingGame: React.FC = () => {
     }
   }, [isPlaying, timeLeft, difficulty])
 
-  // Intro Screen - ZOPTYMALIZOWANE ANIMACJE
+  // 🎁 XP REWARD MODAL
+  const XPRewardModal = () => {
+    const config = difficultyConfig[difficulty]
+    
+    return (
+      <AnimatePresence>
+        {showXPReward && gameCompleted && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setShowXPReward(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.5, y: 50, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.5, y: 50, opacity: 0 }}
+              transition={{ type: "spring", damping: 15 }}
+              className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="text-center">
+                <motion.div
+                  animate={{ 
+                    rotate: [0, -10, 10, -10, 10, 0],
+                    scale: [1, 1.2, 1]
+                  }}
+                  transition={{ duration: 0.6 }}
+                  className="inline-block mb-6"
+                >
+                  <div className="relative">
+                    <div className="absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-500 rounded-full blur-xl opacity-50" />
+                    <Gift className="h-24 w-24 text-purple-500 relative" />
+                  </div>
+                </motion.div>
+                
+                <motion.h2 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                  className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-3"
+                >
+                  Gratulacje! 🎉
+                </motion.h2>
+                
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ delay: 0.3, type: "spring" }}
+                  className="inline-flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl text-white font-bold text-2xl shadow-xl mb-6"
+                >
+                  <Sparkles className="h-6 w-6" />
+                  <span>+{config.xp} XP</span>
+                </motion.div>
+                
+                <motion.p 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.4 }}
+                  className="text-gray-600 mb-2 text-lg font-medium"
+                >
+                  Za ukończenie gry w trybie <strong>{config.name}</strong>!
+                </motion.p>
+                
+                <motion.p 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.5 }}
+                  className="text-gray-500 text-sm mb-8"
+                >
+                  Świetna pamięć wzrokowa! 🎨
+                </motion.p>
+                
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setShowXPReward(false)}
+                  className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold rounded-2xl hover:from-purple-700 hover:to-pink-700 transition-all shadow-xl"
+                >
+                  Super! 🎨
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    )
+  }
+
+  // Intro Screen
   if (gameState === 'intro') {
     return (
       <div className="w-full max-w-4xl mx-auto">
@@ -249,9 +339,13 @@ export const ColorMatchingGame: React.FC = () => {
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <div>
+                    <div className="text-left">
                       <div className="font-semibold text-gray-900 text-lg">{config.name}</div>
                       <div className="text-sm text-gray-600 mt-1">{config.description}</div>
+                      <div className="inline-flex items-center gap-1 mt-2 px-3 py-1 bg-purple-100 rounded-full">
+                        <Sparkles className="h-3 w-3 text-purple-600" />
+                        <span className="text-xs text-purple-700 font-semibold">+{config.xp} XP</span>
+                      </div>
                     </div>
                     <div className="text-right">
                       <div className="text-sm text-gray-500">
@@ -265,19 +359,6 @@ export const ColorMatchingGame: React.FC = () => {
                 </button>
               ))}
             </div>
-          </div>
-
-          {/* XP Info */}
-          <div className="mb-6 p-4 rounded-xl bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 text-center">
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <Award className="h-5 w-5 text-amber-600" />
-              <span className="font-semibold text-amber-700">
-                {difficultyConfig[difficulty].xp} XP za ukończenie gry
-              </span>
-            </div>
-            <p className="text-amber-600 text-sm">
-              XP otrzymujesz tylko za udane ukończenie gry
-            </p>
           </div>
 
           {/* Start Button */}
@@ -302,136 +383,111 @@ export const ColorMatchingGame: React.FC = () => {
     )
   }
 
-  // Completion Screen - ZOPTYMALIZOWANE
+  // Completion Screen
   if (gameState === 'completion') {
     const config = difficultyConfig[difficulty]
     const earnedXP = gameCompleted ? config.xp : 0
 
     return (
-      <div className="w-full max-w-4xl mx-auto">
-        <div className="relative bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-8 pt-8 pb-6 border-b border-gray-50">
-            <div className="text-center">
-              <div className={`w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg ${
-                gameCompleted 
-                  ? 'bg-gradient-to-br from-green-500 to-emerald-500' 
-                  : 'bg-gradient-to-br from-gray-500 to-gray-600'
-              }`}>
-                {gameCompleted ? (
-                  <Sparkles className="h-10 w-10 text-white" />
-                ) : (
-                  <span className="text-white text-2xl">⏰</span>
-                )}
-              </div>
-              <h1 className="text-3xl font-semibold text-gray-900 mb-2">
-                {gameCompleted ? 'Gra Zakończona!' : 'Czas Minął!'}
-              </h1>
-              <p className="text-gray-600">
-                {gameCompleted 
-                  ? 'Znaleziono wszystkie pary kolorów' 
-                  : 'Nie udało się znaleźć wszystkich par w czasie'
-                }
-              </p>
-            </div>
-          </div>
-
-          <div className="p-8">
-            {/* XP Notification */}
-            {gameCompleted && (
-              <div className="mb-8 p-6 rounded-2xl bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 text-center">
-                <div className="flex items-center justify-center gap-3 mb-3">
-                  <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-amber-500 rounded-2xl flex items-center justify-center shadow-lg">
-                    <Award className="h-6 w-6 text-white" />
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold text-amber-700">+{earnedXP} XP</div>
-                    <div className="text-sm text-amber-600">Zdobyte punkty doświadczenia</div>
-                  </div>
+      <>
+        <div className="w-full max-w-4xl mx-auto">
+          <div className="relative bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="px-8 pt-8 pb-6 border-b border-gray-50">
+              <div className="text-center">
+                <div className={`w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg ${
+                  gameCompleted 
+                    ? 'bg-gradient-to-br from-green-500 to-emerald-500' 
+                    : 'bg-gradient-to-br from-gray-500 to-gray-600'
+                }`}>
+                  {gameCompleted ? (
+                    <Sparkles className="h-10 w-10 text-white" />
+                  ) : (
+                    <span className="text-white text-2xl">⏰</span>
+                  )}
                 </div>
-                <p className="text-amber-700 text-sm">
-                  Gratulacje! Otrzymujesz {earnedXP} XP za ukończenie gry w trybie {config.name}.
+                <h1 className="text-3xl font-semibold text-gray-900 mb-2">
+                  {gameCompleted ? 'Gra Zakończona!' : 'Czas Minął!'}
+                </h1>
+                <p className="text-gray-600">
+                  {gameCompleted 
+                    ? `Znaleziono wszystkie pary kolorów • +${earnedXP} XP` 
+                    : 'Nie udało się znaleźć wszystkich par w czasie'
+                  }
                 </p>
               </div>
-            )}
+            </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-3 gap-4 mb-8">
-              <div className="text-center p-4 rounded-xl bg-purple-50 border border-purple-100">
-                <div className="text-xl font-bold text-purple-600 mb-1">{score}</div>
-                <div className="text-sm text-purple-700">Punkty gry</div>
-              </div>
-              <div className="text-center p-4 rounded-xl bg-pink-50 border border-pink-100">
-                <div className="text-xl font-bold text-pink-600 mb-1">{moves}</div>
-                <div className="text-sm text-pink-700">Ruchy</div>
-              </div>
-              <div className="text-center p-4 rounded-xl bg-blue-50 border border-blue-100">
-                <div className="text-xl font-bold text-blue-600 mb-1">
-                  {config.name}
+            <div className="p-8">
+              {/* Stats */}
+              <div className="grid grid-cols-3 gap-4 mb-8">
+                <div className="text-center p-4 rounded-xl bg-purple-50 border border-purple-100">
+                  <div className="text-xl font-bold text-purple-600 mb-1">{score}</div>
+                  <div className="text-sm text-purple-700">Punkty gry</div>
                 </div>
-                <div className="text-sm text-blue-700">Tryb</div>
+                <div className="text-center p-4 rounded-xl bg-pink-50 border border-pink-100">
+                  <div className="text-xl font-bold text-pink-600 mb-1">{moves}</div>
+                  <div className="text-sm text-pink-700">Ruchy</div>
+                </div>
+                <div className="text-center p-4 rounded-xl bg-blue-50 border border-blue-100">
+                  <div className="text-xl font-bold text-blue-600 mb-1">
+                    {config.name}
+                  </div>
+                  <div className="text-sm text-blue-700">Tryb</div>
+                </div>
               </div>
-            </div>
 
-            {/* Performance Rating */}
-            <div className="text-center mb-6">
-              {gameCompleted ? (
-                <>
-                  <div className="text-lg font-semibold text-gray-900 mb-2">
-                    {moves <= config.pairs + 2 ? '🎉 Doskonała pamięć!' : 
-                     moves <= config.pairs * 1.5 ? '👍 Bardzo dobrze!' : '😊 Dobra gra!'}
-                  </div>
-                  <p className="text-gray-600 text-sm">
-                    {moves <= config.pairs + 2 ? 'Perfekcyjne dopasowanie wszystkich par!' :
-                     moves <= config.pairs * 1.5 ? 'Świetna koncentracja i spostrzegawczość!' : 
-                     'Gra w kolory to doskonały trening dla umysłu!'}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <div className="text-lg font-semibold text-gray-900 mb-2">
-                    ⏰ Czas minął!
-                  </div>
-                  <p className="text-gray-600 text-sm">
-                    Spróbuj ponownie! Pamiętaj - XP otrzymujesz tylko za udane ukończenie gry.
-                  </p>
-                </>
-              )}
-            </div>
+              {/* Performance Rating */}
+              <div className="text-center mb-6">
+                {gameCompleted ? (
+                  <>
+                    <div className="text-lg font-semibold text-gray-900 mb-2">
+                      {moves <= config.pairs + 2 ? '🎉 Doskonała pamięć!' : 
+                       moves <= config.pairs * 1.5 ? '👍 Bardzo dobrze!' : '😊 Dobra gra!'}
+                    </div>
+                    <p className="text-gray-600 text-sm">
+                      {moves <= config.pairs + 2 ? 'Perfekcyjne dopasowanie wszystkich par!' :
+                       moves <= config.pairs * 1.5 ? 'Świetna koncentracja i spostrzegawczość!' : 
+                       'Gra w kolory to doskonały trening dla umysłu!'}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-lg font-semibold text-gray-900 mb-2">
+                      ⏰ Czas minął!
+                    </div>
+                    <p className="text-gray-600 text-sm">
+                      Spróbuj ponownie! Pamiętaj - XP otrzymujesz tylko za udane ukończenie gry.
+                    </p>
+                  </>
+                )}
+              </div>
 
-            {/* Action Buttons */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <button
-                onClick={handleStartGame}
-                className="py-4 px-6 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl hover:from-purple-700 hover:to-pink-700 transition-colors font-medium flex items-center justify-center gap-2 shadow-lg"
-              >
-                <Play className="h-5 w-5" />
-                {gameCompleted ? 'Zagraj Ponownie' : 'Spróbuj Ponownie'}
-              </button>
-              <button
-                onClick={handleBackToGames}
-                className="py-4 px-6 border border-gray-200 text-gray-700 rounded-xl hover:border-gray-300 hover:bg-gray-50 transition-all duration-100 font-medium flex items-center justify-center gap-2"
-              >
-                <Home className="h-5 w-5" />
-                Wróć do Listy Gier
-              </button>
-            </div>
-
-            {/* XP System Info */}
-            <div className="mt-6 p-4 rounded-xl bg-gray-50 border border-gray-200 text-center">
-              <p className="text-gray-600 text-sm">
-                {gameCompleted 
-                  ? `💡 Za ukończenie gry w trybie ${config.name} otrzymujesz ${config.xp} XP.` 
-                  : '💡 XP otrzymujesz tylko za udane ukończenie gry. Spróbuj ponownie!'
-                }
-              </p>
+              {/* Action Buttons */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button
+                  onClick={handleStartGame}
+                  className="py-4 px-6 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl hover:from-purple-700 hover:to-pink-700 transition-colors font-medium flex items-center justify-center gap-2 shadow-lg"
+                >
+                  <Play className="h-5 w-5" />
+                  {gameCompleted ? 'Zagraj Ponownie' : 'Spróbuj Ponownie'}
+                </button>
+                <button
+                  onClick={handleBackToGames}
+                  className="py-4 px-6 border border-gray-200 text-gray-700 rounded-xl hover:border-gray-300 hover:bg-gray-50 transition-all duration-100 font-medium flex items-center justify-center gap-2"
+                >
+                  <Home className="h-5 w-5" />
+                  Wróć do Listy Gier
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+        <XPRewardModal />
+      </>
     )
   }
 
-  // Main Game Screen - ZOPTYMALIZOWANE
+  // Main Game Screen (bez zmian - za długi żeby tutaj wkleić całość)
   const config = difficultyConfig[difficulty]
   const gridCols = 'grid-cols-4'
   const matchedPairs = tiles.filter(t => t.isMatched).length / 2
@@ -446,7 +502,7 @@ export const ColorMatchingGame: React.FC = () => {
             <div>
               <h1 className="text-2xl font-semibold text-gray-900">Memory Kolorów</h1>
               <p className="text-gray-600 mt-1">
-                {config.name} • {config.xp} XP za ukończenie
+                {config.name} • +{config.xp} XP za ukończenie
               </p>
             </div>
             <div className="flex items-center gap-6">
@@ -468,7 +524,7 @@ export const ColorMatchingGame: React.FC = () => {
           </div>
         </div>
 
-        {/* Game Grid - ZOPTYMALIZOWANE */}
+        {/* Game Grid */}
         <div className="p-8">
           <div className={`grid ${gridCols} gap-3 max-w-md mx-auto`}>
             {tiles.map((tile) => (
@@ -487,7 +543,6 @@ export const ColorMatchingGame: React.FC = () => {
                 }}
                 disabled={!isPlaying || tile.isMatched}
               >
-                {/* Wskaźnik dopasowania - uproszczony */}
                 {tile.isMatched && (
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="w-6 h-6 bg-white/30 rounded-full flex items-center justify-center">
@@ -496,7 +551,6 @@ export const ColorMatchingGame: React.FC = () => {
                   </div>
                 )}
 
-                {/* Pokazuj pytajnik tylko jak tile jest zakryty */}
                 {!tile.isFlipped && !tile.isMatched && (
                   <div className="w-full h-full flex items-center justify-center">
                     <span className="text-gray-400 text-lg font-bold">?</span>
@@ -506,7 +560,7 @@ export const ColorMatchingGame: React.FC = () => {
             ))}
           </div>
 
-          {/* Progress - uproszczony */}
+          {/* Progress */}
           <div className="text-center mt-6">
             <div className="text-sm text-gray-600 mb-2">
               Znalezione: {matchedPairs} / {config.pairs} par
@@ -521,7 +575,7 @@ export const ColorMatchingGame: React.FC = () => {
           </div>
         </div>
 
-        {/* Game Controls - ZOPTYMALIZOWANE */}
+        {/* Game Controls */}
         <div className="px-8 py-6 border-t border-gray-50 bg-gray-50/50">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">

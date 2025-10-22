@@ -1,3 +1,4 @@
+// src/lib/user-service.ts
 import { 
   collection, 
   doc, 
@@ -12,11 +13,13 @@ import {
   serverTimestamp,
   setDoc,
   orderBy,
-  limit
+  limit,
+  Timestamp
 } from 'firebase/firestore'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { db, storage } from '@/lib/firebase'
 import { firebaseSearchService } from './firebase-search-service'
+import { XPService, XPSource } from './xp-service'
 
 export interface UserProfile {
   uid: string
@@ -37,6 +40,11 @@ export interface UserProfile {
   updatedAt: Date
   bio?: string
   role?: 'user' | 'admin'
+  hasAddedFirstMood?: boolean
+  lastDailyXP?: Timestamp
+  lastStreak7Reward?: Timestamp
+  lastStreak30Reward?: Timestamp
+  readArticles?: string[]
 }
 
 export interface FriendRequest {
@@ -51,6 +59,50 @@ export interface StreakData {
   currentStreak: number
   longestStreak: number
   lastEntryDate: Date | null
+}
+
+/**
+ * 🔥 OBLICZA PASSĘ UŻYTKOWNIKA (ile dni z rzędu dodawał nastrój)
+ */
+function calculateStreakFromMoods(moods: any[]): number {
+  if (!moods || moods.length === 0) return 0
+  
+  // Sortuj wg daty (najnowsze pierwsze)
+  const sortedMoods = [...moods].sort((a, b) => 
+    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  )
+  
+  let streak = 0
+  let currentDate = new Date()
+  currentDate.setHours(0, 0, 0, 0)
+  
+  // Sprawdź czy jest wpis dzisiaj lub wczoraj
+  const latestMood = sortedMoods[0]
+  const latestDate = new Date(latestMood.timestamp)
+  latestDate.setHours(0, 0, 0, 0)
+  
+  const diffTime = currentDate.getTime() - latestDate.getTime()
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
+  
+  // Jeśli ostatni wpis był więcej niż wczoraj - brak passy
+  if (diffDays > 1) return 0
+  
+  // Zlicz ile dni z rzędu ma wpisy
+  for (let i = 0; i < sortedMoods.length; i++) {
+    const moodDate = new Date(sortedMoods[i].timestamp)
+    moodDate.setHours(0, 0, 0, 0)
+    
+    const expectedDate = new Date(currentDate)
+    expectedDate.setDate(expectedDate.getDate() - i)
+    
+    if (moodDate.getTime() === expectedDate.getTime()) {
+      streak++
+    } else {
+      break
+    }
+  }
+  
+  return streak
 }
 
 const userService = {
@@ -68,7 +120,9 @@ const userService = {
       consistency: 0,
       moodEntries: [],
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
+      hasAddedFirstMood: false,
+      readArticles: []
     }
 
     await setDoc(doc(db, 'users', uid), userProfile)
@@ -92,7 +146,10 @@ const userService = {
         ...data,
         createdAt: data.createdAt?.toDate() || new Date(),
         updatedAt: data.updatedAt?.toDate() || new Date(),
-        lastMoodUpdate: data.lastMoodUpdate?.toDate()
+        lastMoodUpdate: data.lastMoodUpdate?.toDate(),
+        lastDailyXP: data.lastDailyXP,
+        lastStreak7Reward: data.lastStreak7Reward,
+        lastStreak30Reward: data.lastStreak30Reward
       } as UserProfile
     } catch (error) {
       console.error('Błąd pobierania profilu:', error)
@@ -100,7 +157,6 @@ const userService = {
     }
   },
 
-  // ✅ POPRAWIONE - używa firebaseSearchService
   async findUsersByName(searchTerm: string, currentUserId: string): Promise<UserProfile[]> {
     try {
       if (!searchTerm.trim() || searchTerm.length < 2) {
@@ -128,7 +184,9 @@ const userService = {
             consistency: 0,
             moodEntries: [],
             createdAt: new Date(),
-            updatedAt: new Date()
+            updatedAt: new Date(),
+            hasAddedFirstMood: false,
+            readArticles: []
           }
         })
       )
@@ -173,7 +231,6 @@ const userService = {
     return downloadURL
   },
 
-  // ✅ DODANA FUNKCJA calculateStreak
   async calculateStreak(userId: string): Promise<StreakData> {
     try {
       const user = await this.getUserProfile(userId)
@@ -186,72 +243,12 @@ const userService = {
       }
 
       const moodEntries = user.moodEntries || []
+      const currentStreak = calculateStreakFromMoods(moodEntries)
       
-      if (moodEntries.length === 0) {
-        return {
-          currentStreak: 0,
-          longestStreak: 0,
-          lastEntryDate: null
-        }
-      }
-
-      // Sortuj wpisy od najnowszego do najstarszego
-      const sortedEntries = [...moodEntries].sort((a, b) => 
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      )
-
-      let currentStreak = 0
-      let longestStreak = 0
-      let tempStreak = 0
-      
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      
-      let lastProcessedDate: Date | null = null
-
-      for (let i = 0; i < sortedEntries.length; i++) {
-        const entryDate = new Date(sortedEntries[i].timestamp)
-        entryDate.setHours(0, 0, 0, 0)
-        
-        if (i === 0) {
-          // Sprawdź czy najnowszy wpis jest z dzisiaj lub wczoraj
-          const diffTime = today.getTime() - entryDate.getTime()
-          const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
-          
-          if (diffDays <= 1) {
-            currentStreak = 1
-            tempStreak = 1
-            lastProcessedDate = entryDate
-          }
-        } else {
-          const prevEntryDate = new Date(sortedEntries[i - 1].timestamp)
-          prevEntryDate.setHours(0, 0, 0, 0)
-          
-          const diffTime = prevEntryDate.getTime() - entryDate.getTime()
-          const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
-          
-          if (diffDays === 1) {
-            // Kolejny dzień streak
-            tempStreak++
-            if (i === 1) {
-              currentStreak = tempStreak
-            }
-          } else if (diffDays > 1) {
-            // Przerwa w streak - zresetuj temp streak
-            tempStreak = 0
-          }
-        }
-        
-        // Aktualizuj najdłuższy streak
-        if (tempStreak > longestStreak) {
-          longestStreak = tempStreak
-        }
-      }
-
       return {
-        currentStreak: Math.max(currentStreak, tempStreak),
-        longestStreak: Math.max(longestStreak, currentStreak, tempStreak),
-        lastEntryDate: sortedEntries.length > 0 ? new Date(sortedEntries[0].timestamp) : null
+        currentStreak,
+        longestStreak: Math.max(currentStreak, user.streak || 0),
+        lastEntryDate: moodEntries.length > 0 ? new Date(moodEntries[0].timestamp) : null
       }
     } catch (error) {
       console.error('Błąd obliczania streak:', error)
@@ -263,9 +260,8 @@ const userService = {
     }
   },
 
-  // ✅ DODANA FUNKCJA calculateAdvancedStreak
   async calculateAdvancedStreak(userId: string): Promise<StreakData> {
-    return this.calculateStreak(userId) // Używamy tej samej implementacji
+    return this.calculateStreak(userId)
   },
 
   async getUserStats(userId: string): Promise<{
@@ -287,41 +283,12 @@ const userService = {
 
       const moodEntries = user.moodEntries || []
       const totalEntries = moodEntries.length
-      
-      let streak = 0
+      const streak = calculateStreakFromMoods(moodEntries)
+
+      const last30Days = 30
       const today = new Date()
       today.setHours(0, 0, 0, 0)
       
-      if (moodEntries.length > 0) {
-        const sortedEntries = [...moodEntries].sort((a, b) => 
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        )
-        
-        const latestEntry = sortedEntries[0]
-        const latestEntryDate = new Date(latestEntry.timestamp)
-        latestEntryDate.setHours(0, 0, 0, 0)
-        
-        const isToday = latestEntryDate.getTime() === today.getTime()
-        
-        if (isToday) {
-          streak = 1
-          for (let i = 1; i < sortedEntries.length; i++) {
-            const currentEntryDate = new Date(sortedEntries[i].timestamp)
-            currentEntryDate.setHours(0, 0, 0, 0)
-            
-            const expectedDate = new Date(today)
-            expectedDate.setDate(expectedDate.getDate() - i)
-            
-            if (currentEntryDate.getTime() === expectedDate.getTime()) {
-              streak++
-            } else {
-              break
-            }
-          }
-        }
-      }
-
-      const last30Days = 30
       let entriesLast30Days = 0
       const uniqueDays = new Set()
       
@@ -362,7 +329,9 @@ const userService = {
     }
   },
 
-  // ✅ DODANE FUNKCJE DO ZARZĄDZANIA NASTROJAMI
+  /**
+   * 🎭 ZAPISUJE NASTRÓJ + PRZYZNAJE XP + SPRAWDZA PASSĘ
+   */
   async saveMood(userId: string, mood: number): Promise<void> {
     try {
       const user = await this.getUserProfile(userId)
@@ -375,6 +344,7 @@ const userService = {
       
       const existingEntryIndex = user.moodEntries.findIndex((entry: any) => {
         const entryDate = new Date(entry.timestamp)
+        entryDate.setHours(0, 0, 0, 0)
         return entryDate.getTime() === today.getTime()
       })
 
@@ -385,7 +355,9 @@ const userService = {
       }
 
       let updatedEntries
-      if (existingEntryIndex !== -1) {
+      const isNewEntry = existingEntryIndex === -1
+
+      if (!isNewEntry) {
         // Aktualizuj istniejący wpis
         updatedEntries = [...user.moodEntries]
         updatedEntries[existingEntryIndex] = newEntry
@@ -394,19 +366,50 @@ const userService = {
         updatedEntries = [newEntry, ...user.moodEntries]
       }
 
+      // Oblicz passę
+      const streak = calculateStreakFromMoods(updatedEntries)
+
+      // Zaktualizuj profil
       await this.updateUserProfile(userId, {
         currentMood: mood,
         lastMoodUpdate: now,
-        moodEntries: updatedEntries
+        moodEntries: updatedEntries,
+        streak
       })
 
-      console.log(`✅ Nastrój zapisany: ${mood}% dla użytkownika ${user.displayName}`)
+      // 🎁 PRZYZNAJ XP ZA NASTRÓJ (tylko dla nowych wpisów)
+      if (isNewEntry) {
+        const isFirstMood = !user.hasAddedFirstMood
+        
+        if (isFirstMood) {
+          // Pierwszy nastrój = bonus 50 XP
+          await XPService.awardXP(userId, XPSource.FIRST_MOOD)
+          await updateDoc(doc(db, 'users', userId), { hasAddedFirstMood: true })
+          console.log('✅ +50 XP za pierwszy nastrój!')
+        } else {
+          // Normalny nastrój = 10 XP
+          await XPService.awardXP(userId, XPSource.MOOD_ENTRY)
+          console.log('✅ +10 XP za dodanie nastroju')
+        }
+
+        // 🔥 PRZYZNAJ XP ZA PASSĘ (jeśli spełnia warunki)
+        if (streak >= 7 || streak >= 30) {
+          await XPService.awardStreakXP(userId, streak)
+          console.log(`🔥 Sprawdzono passę: ${streak} dni`)
+        }
+      }
+
+      await this.updateConsistency(userId)
+      console.log(`✅ Nastrój zapisany: ${mood}% (passa: ${streak} dni)`)
     } catch (error) {
       console.error('Błąd zapisywania nastroju:', error)
       throw error
     }
   },
 
+  /**
+   * 🎭 ZAPISUJE NASTRÓJ Z NOTATKĄ + XP + PASSA
+   */
   async saveMoodWithNote(userId: string, mood: number, note?: string): Promise<void> {
     try {
       const user = await this.getUserProfile(userId)
@@ -419,6 +422,7 @@ const userService = {
       
       const existingEntryIndex = user.moodEntries.findIndex((entry: any) => {
         const entryDate = new Date(entry.timestamp)
+        entryDate.setHours(0, 0, 0, 0)
         return entryDate.getTime() === today.getTime()
       })
 
@@ -430,7 +434,9 @@ const userService = {
       }
 
       let updatedEntries
-      if (existingEntryIndex !== -1) {
+      const isNewEntry = existingEntryIndex === -1
+
+      if (!isNewEntry) {
         // Aktualizuj istniejący wpis
         updatedEntries = [...user.moodEntries]
         updatedEntries[existingEntryIndex] = newEntry
@@ -439,13 +445,39 @@ const userService = {
         updatedEntries = [newEntry, ...user.moodEntries]
       }
 
+      // Oblicz passę
+      const streak = calculateStreakFromMoods(updatedEntries)
+
+      // Zaktualizuj profil
       await this.updateUserProfile(userId, {
         currentMood: mood,
         lastMoodUpdate: now,
-        moodEntries: updatedEntries
+        moodEntries: updatedEntries,
+        streak
       })
 
-      console.log(`✅ Nastrój z notatką zapisany: ${mood}% dla użytkownika ${user.displayName}`)
+      // 🎁 PRZYZNAJ XP ZA NASTRÓJ (tylko dla nowych wpisów)
+      if (isNewEntry) {
+        const isFirstMood = !user.hasAddedFirstMood
+        
+        if (isFirstMood) {
+          await XPService.awardXP(userId, XPSource.FIRST_MOOD)
+          await updateDoc(doc(db, 'users', userId), { hasAddedFirstMood: true })
+          console.log('✅ +50 XP za pierwszy nastrój!')
+        } else {
+          await XPService.awardXP(userId, XPSource.MOOD_ENTRY)
+          console.log('✅ +10 XP za dodanie nastroju z notatką')
+        }
+
+        // 🔥 PRZYZNAJ XP ZA PASSĘ
+        if (streak >= 7 || streak >= 30) {
+          await XPService.awardStreakXP(userId, streak)
+          console.log(`🔥 Sprawdzono passę: ${streak} dni`)
+        }
+      }
+
+      await this.updateConsistency(userId)
+      console.log(`✅ Nastrój z notatką zapisany: ${mood}% (passa: ${streak} dni)`)
     } catch (error) {
       console.error('Błąd zapisywania nastroju z notatką:', error)
       throw error
@@ -544,6 +576,19 @@ const userService = {
       updateDoc(requestRef, { status: 'accepted' })
     ])
 
+    // 🎁 PRZYZNAJ XP ZA ZNAJOMYCH
+    try {
+      // Użytkownik który wysłał zaproszenie dostaje bonus XP
+      await XPService.awardXP(request.fromUserId, XPSource.FRIEND_INVITED)
+      console.log(`✅ +125 XP dla ${fromUser.displayName} (zaproszenie zaakceptowane)`)
+
+      // Użytkownik który zaakceptował dostaje XP
+      await XPService.awardXP(request.toUserId, XPSource.FRIEND_ADDED)
+      console.log(`✅ +25 XP dla ${toUser.displayName} (dodano znajomego)`)
+    } catch (error) {
+      console.error('❌ Błąd przyznawania XP za znajomych:', error)
+    }
+
     console.log(`✅ Zaproszenie zaakceptowane: ${fromUser.displayName} i ${toUser.displayName} są teraz znajomymi`)
   },
 
@@ -628,14 +673,13 @@ const userService = {
     })
   },
 
-  // ✅ DODANE FUNKCJE DO ZARZĄDZANIA POZIOMEM I XP
   async addXP(userId: string, xpToAdd: number): Promise<void> {
     try {
       const user = await this.getUserProfile(userId)
       if (!user) return
 
       const newXP = user.xp + xpToAdd
-      const newLevel = Math.floor(newXP / 100) + 1 // 100 XP na poziom
+      const newLevel = XPService.calculateLevel(newXP)
 
       await this.updateUserProfile(userId, {
         xp: newXP,
@@ -652,14 +696,14 @@ const userService = {
     try {
       const stats = await this.getUserStats(userId)
       await this.updateUserProfile(userId, {
-        consistency: stats.consistency
+        consistency: stats.consistency,
+        streak: stats.streak
       })
     } catch (error) {
       console.error('Błąd aktualizacji konsystencji:', error)
     }
   },
 
-  // ✅ DODANE FUNKCJE DO ZARZĄDZANIA PROFILAMI
   async updateUserBio(userId: string, bio: string): Promise<void> {
     await this.updateUserProfile(userId, { bio })
   },
@@ -672,7 +716,6 @@ const userService = {
     })
   },
 
-  // ✅ DODANE FUNKCJE DO OBSŁUGI NOTYFIKACJI
   async getUserNotifications(userId: string): Promise<any[]> {
     try {
       const notificationsQuery = query(
@@ -703,7 +746,107 @@ const userService = {
     } catch (error) {
       console.error('Błąd oznaczania notyfikacji jako przeczytanej:', error)
     }
-  }
-}
+  },
+  // ... istniejący kod ...
 
+  async deleteUserAccount(uid: string): Promise<void> {
+    try {
+      console.log(`🗑️ Rozpoczynanie usuwania konta użytkownika: ${uid}`)
+      
+      // 1. Usuń profil użytkownika z Firestore
+      const userRef = doc(db, 'users', uid)
+      await deleteDoc(userRef)
+      console.log('✅ Profil użytkownika usunięty z Firestore')
+      
+      // 2. Usuń dane związane z użytkownikiem
+      await this.deleteUserData(uid)
+      
+      // 3. Usuń konto z Firebase Authentication
+      // (To musi być wykonane po stronie klienta z reautentykacją)
+      console.log('ℹ️ Konto użytkownika oznaczone do usunięcia z Authentication')
+      
+      console.log('✅ Wszystkie dane użytkownika zostały usunięte')
+    } catch (error) {
+      console.error('❌ Błąd podczas usuwania konta:', error)
+      throw new Error('Nie udało się usunąć konta. Spróbuj ponownie.')
+    }
+  },
+
+  async deleteUserData(uid: string): Promise<void> {
+    try {
+      console.log(`🧹 Czyszczenie danych użytkownika: ${uid}`)
+      
+      // Usuń zaproszenia do znajomych
+      await this.deleteFriendRequests(uid)
+      
+      // Usuń powiązania znajomych
+      await this.removeUserFromFriends(uid)
+      
+      // Tutaj możesz dodać usuwanie innych danych:
+      // - notatki użytkownika
+      // - zadania
+      // - inne kolekcje powiązane z użytkownikiem
+      
+      console.log('✅ Wszystkie dane użytkownika zostały wyczyszczone')
+    } catch (error) {
+      console.error('❌ Błąd podczas czyszczenia danych użytkownika:', error)
+      throw error
+    }
+  },
+
+  async deleteFriendRequests(uid: string): Promise<void> {
+    try {
+      // Usuń zaproszenia wysłane PRZEZ użytkownika
+      const sentRequestsQuery = query(
+        collection(db, 'friendRequests'),
+        where('fromUserId', '==', uid)
+      )
+      const sentRequestsSnapshot = await getDocs(sentRequestsQuery)
+      
+      const deleteSentPromises = sentRequestsSnapshot.docs.map(doc => 
+        deleteDoc(doc.ref)
+      )
+      
+      // Usuń zaproszenia wysłane DO użytkownika
+      const receivedRequestsQuery = query(
+        collection(db, 'friendRequests'),
+        where('toUserId', '==', uid)
+      )
+      const receivedRequestsSnapshot = await getDocs(receivedRequestsQuery)
+      
+      const deleteReceivedPromises = receivedRequestsSnapshot.docs.map(doc => 
+        deleteDoc(doc.ref)
+      )
+      
+      await Promise.all([...deleteSentPromises, ...deleteReceivedPromises])
+      console.log(`✅ Usunięto zaproszenia znajomych dla użytkownika: ${uid}`)
+    } catch (error) {
+      console.error('❌ Błąd podczas usuwania zaproszeń:', error)
+    }
+  },
+
+  async removeUserFromFriends(uid: string): Promise<void> {
+    try {
+      // Znajdź wszystkich znajomych użytkownika
+      const user = await this.getUserProfile(uid)
+      if (!user) return
+      
+      const friendIds = user.friends || []
+      
+      // Usuń użytkownika z list znajomych wszystkich jego znajomych
+      const updatePromises = friendIds.map(async (friendId: string) => {
+        const friend = await this.getUserProfile(friendId)
+        if (friend && friend.friends) {
+          const updatedFriends = friend.friends.filter((id: string) => id !== uid)
+          await this.updateUserProfile(friendId, { friends: updatedFriends })
+        }
+      })
+      
+      await Promise.all(updatePromises)
+      console.log(`✅ Usunięto użytkownika z list znajomych: ${uid}`)
+    } catch (error) {
+      console.error('❌ Błąd podczas usuwania z list znajomych:', error)
+    }
+  },
+}
 export default userService

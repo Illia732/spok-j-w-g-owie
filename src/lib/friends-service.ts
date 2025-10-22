@@ -14,9 +14,9 @@ import {
   getDoc
 } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
-import { FriendRequest } from '@/types/user' // 👈 USUWAMY FriendActivity
+import { FriendRequest } from '@/types/user'
+import { XPService, XPSource } from '@/lib/xp-service'
 
-// 👇 DODAJEMY BRAKUJĄCE TYPY
 interface Friendship {
   id: string
   userId: string
@@ -79,6 +79,7 @@ export const friendsService = {
     }
 
     await addDoc(collection(db, 'friendRequests'), request)
+    console.log('📧 Zaproszenie wysłane')
   },
 
   // Akceptowanie zaproszenia
@@ -106,7 +107,7 @@ export const friendsService = {
     const friendship1: Omit<Friendship, 'id'> = {
       userId: request.fromUserId,
       friendId: request.toUserId,
-      friendName: toUserData?.displayName || toUserData?.email || 'Uytkownik',
+      friendName: toUserData?.displayName || toUserData?.email || 'Użytkownik',
       createdAt: new Date(),
       moodVisibility: 'average',
       streak: 0
@@ -115,7 +116,7 @@ export const friendsService = {
     const friendship2: Omit<Friendship, 'id'> = {
       userId: request.toUserId,
       friendId: request.fromUserId,
-      friendName: fromUserData?.displayName || fromUserData?.email || 'Uytkownik',
+      friendName: fromUserData?.displayName || fromUserData?.email || 'Użytkownik',
       createdAt: new Date(),
       moodVisibility: 'average',
       streak: 0
@@ -125,6 +126,19 @@ export const friendsService = {
       addDoc(collection(db, 'friendships'), friendship1),
       addDoc(collection(db, 'friendships'), friendship2)
     ])
+
+    // 🎁 PRZYZNAJ XP DLA OBU UŻYTKOWNIKÓW
+    try {
+      // Użytkownik który wysłał zaproszenie dostaje bonus XP za to że znajomy zaakceptował
+      await XPService.awardXP(request.fromUserId, XPSource.FRIEND_INVITED)
+      console.log(`✅ +125 XP dla ${request.fromUserId} (zaproszenie zaakceptowane)`)
+
+      // Użytkownik który zaakceptował dostaje XP za dodanie znajomego
+      await XPService.awardXP(request.toUserId, XPSource.FRIEND_ADDED)
+      console.log(`✅ +25 XP dla ${request.toUserId} (dodano znajomego)`)
+    } catch (error) {
+      console.error('❌ Błąd przyznawania XP za znajomych:', error)
+    }
   },
 
   // Odrzucanie zaproszenia

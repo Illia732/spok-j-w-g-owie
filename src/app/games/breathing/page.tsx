@@ -3,8 +3,41 @@
 import { BreathingExercise } from '@/components/games/BreathingExercise'
 import Header from '@/components/layout/header'
 import { motion } from 'framer-motion'
+import { useEffect, useState } from 'react'
+import { auth } from '@/lib/firebase'
+import { onAuthStateChanged } from 'firebase/auth'
+import { XPService, XPSource } from '@/lib/xp-service'
 
 export default function BreathingGamePage() {
+  const [user, setUser] = useState<any>(null)
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (usr) => {
+      setUser(usr)
+    })
+    return () => unsubscribe()
+  }, [])
+
+  // 🎁 CALLBACK PO UKOŃCZENIU GRY
+  const handleBreathingComplete = async () => {
+    if (!user) return
+
+    try {
+      console.log('🌬️ Ukończono ćwiczenie oddechowe!')
+      
+      const xpResult = await XPService.awardXP(
+        user.uid,
+        XPSource.BREATHING_EXERCISE
+      )
+
+      if (xpResult.success) {
+        console.log(`✅ Przyznano ${xpResult.xpAwarded} XP za oddychanie!`)
+      }
+    } catch (error) {
+      console.error('❌ Błąd przyznawania XP:', error)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/20 to-purple-50/10">
       <Header />
@@ -24,13 +57,13 @@ export default function BreathingGamePage() {
                 Ćwiczenie Oddechowe
               </h1>
               <p className="text-gray-600 text-sm">
-                Technika 4-7-8-4 dla głębokiego relaksu i spokoju umysłu
+                Technika 4-7-8-4 dla głębokiego relaksu • <span className="text-blue-600 font-semibold">+5 XP</span>
               </p>
             </div>
           </div>
         </motion.div>
 
-        <BreathingExercise />
+        <BreathingExercise onComplete={handleBreathingComplete} />
         
         {/* Additional Info */}
         <motion.div

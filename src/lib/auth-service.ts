@@ -23,6 +23,7 @@ export interface UserData {
   unlockedMasks: string[]
   createdAt: Date
   role: 'user' | 'admin'
+  readArticles?: string[]
 }
 
 export const authService = {

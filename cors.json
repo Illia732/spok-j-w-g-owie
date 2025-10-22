@@ -1,0 +1,9 @@
+{
+  "cors": [
+    {
+      "origin": ["http://localhost:3000", "https://twoja-domena.com"],
+      "method": ["GET", "PUT", "POST", "DELETE", "HEAD"],
+      "maxAgeSeconds": 3600
+    }
+  ]
+}

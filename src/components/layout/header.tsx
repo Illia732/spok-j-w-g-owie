@@ -263,10 +263,10 @@ export default function Header({ onClick }: { onClick?: () => void }) {
               {/* Text container */}
               <div className="flex flex-col">
                 <span className="text-lg sm:text-xl font-semibold bg-gradient-to-br from-gray-900 to-gray-700 bg-clip-text text-transparent leading-tight">
-                  Spokój w Głowie
+                  Unfog-go
                 </span>
                 <span className="text-xs text-gray-500 leading-tight hidden sm:block transition-opacity duration-300 group-hover:opacity-80">
-                  Architektura Uważności
+                  Czysty umysł, lepsze życie
                 </span>
               </div>
             </Link>

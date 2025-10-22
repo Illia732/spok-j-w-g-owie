@@ -10,7 +10,7 @@ export default function Footer() {
               <span className="text-xs font-bold text-white">S</span>
             </div>
             <span className="text-sm text-gray-600">
-              © 2024 Spokój w głowie. Wszelkie prawa zastrzeżone.
+              © 2025 Unfog-go. Wszelkie prawa zastrzeżone.
             </span>
           </div>
 

@@ -1,15 +1,13 @@
-// src/components/providers/auth-provider.tsx
 'use client'
 
 import React, { createContext, useContext, useEffect, useState } from 'react'
-import { User } from 'firebase/auth'
-import { onAuthStateChanged } from 'firebase/auth'
-import { doc, getDoc } from 'firebase/firestore'
 import { auth, db } from '@/lib/firebase'
+import { onAuthStateChanged, User } from 'firebase/auth'
+import { doc, getDoc } from 'firebase/firestore'
 
-interface AuthUser extends User {
-  role: 'user' | 'admin';
-  isAdmin?: boolean;
+export interface AuthUser extends User {
+  role: 'user' | 'admin'
+  isAdmin: boolean
 }
 
 interface AuthContextType {
@@ -17,15 +15,10 @@ interface AuthContextType {
   loading: boolean
 }
 
-interface AuthUser {
-  uid: string;
-  email: string | null;
-  displayName: string | null;
-  role: 'user' | 'admin';
-  isAdmin?: boolean;
-}
-
-const AuthContext = createContext<AuthContextType>({ user: null, loading: true })
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  loading: true,
+})
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
@@ -38,21 +31,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid))
           const userData = userDoc.data()
-          
           const authUser: AuthUser = {
             ...firebaseUser,
             role: userData?.role || 'user',
-            isAdmin: userData?.role === 'admin'
+            isAdmin: userData?.role === 'admin',
+          }
+          setUser(authUser)
+          
+          // 📅 PRZYZNAJ XP ZA DZIENNY LOGIN
+          try {
+            const { XPService } = await import('@/lib/xp-service')
+            await XPService.awardDailyLoginXP(firebaseUser.uid)
+            console.log('✅ Sprawdzono dzienny login XP')
+          } catch (error) {
+            console.error('❌ Błąd sprawdzania dziennego loginu:', error)
           }
           
-          setUser(authUser)
         } catch (error) {
-          console.error('Error fetching user data:', error)
-          // Jeśli nie ma danych w Firestore, ustaw domyślne wartości
+          console.error('Error fetching user ', error)
           const authUser: AuthUser = {
             ...firebaseUser,
             role: 'user',
-            isAdmin: false
+            isAdmin: false,
           }
           setUser(authUser)
         }
@@ -72,6 +72,4 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   )
 }
 
-export function useAuth() {
-  return useContext(AuthContext)
-}
+export const useAuth = () => useContext(AuthContext)

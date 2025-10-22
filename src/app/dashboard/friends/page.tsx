@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { auth } from '@/lib/firebase'
 import { onAuthStateChanged, User } from 'firebase/auth'
 import userService from '@/lib/user-service'
@@ -55,6 +55,9 @@ export default function FriendsPage() {
   const [message, setMessage] = useState('')
   const [actionLoading, setActionLoading] = useState<string | null>(null)
 
+  // 🔒 OCHRONA PRZED DUPLIKATAMI
+  const processingRef = useRef<Set<string>>(new Set())
+
   // Debounced search
   const debouncedSearch = useCallback(
     debounce(async (searchTerm: string, currentUserId: string) => {
@@ -102,7 +105,6 @@ export default function FriendsPage() {
     return () => unsubscribe()
   }, [])
 
-  // Obsługa wyszukiwania
   useEffect(() => {
     if (user && searchName.trim()) {
       setSearchLoading(true)
@@ -154,7 +156,15 @@ export default function FriendsPage() {
   const handleSendRequest = async (toUserId: string, toUserName: string) => {
     if (!userProfile?.uid) return
 
-    setActionLoading(`send-${toUserId}`)
+    const key = `send-${toUserId}`
+    if (processingRef.current.has(key)) {
+      console.log('⏳ Już wysyłam zaproszenie...')
+      return
+    }
+
+    processingRef.current.add(key)
+    setActionLoading(key)
+    
     try {
       await userService.sendFriendRequest(userProfile.uid, toUserId)
       setMessage(`✅ Zaproszenie wysłane do ${toUserName}!`)
@@ -163,13 +173,24 @@ export default function FriendsPage() {
       setMessage('❌ ' + (error.message || 'Nie udało się wysłać zaproszenia'))
     } finally {
       setActionLoading(null)
+      setTimeout(() => {
+        processingRef.current.delete(key)
+      }, 1000)
     }
   }
 
   const handleAcceptRequest = async (requestId: string, fromUserName: string) => {
     if (!userProfile?.uid) return
 
-    setActionLoading(`accept-${requestId}`)
+    const key = `accept-${requestId}`
+    if (processingRef.current.has(key)) {
+      console.log('⏳ Już akceptuję zaproszenie...')
+      return
+    }
+
+    processingRef.current.add(key)
+    setActionLoading(key)
+    
     try {
       await userService.acceptFriendRequest(requestId, userProfile.uid)
       setMessage(`✅ Zaakceptowano zaproszenie od ${fromUserName}!`)
@@ -179,11 +200,22 @@ export default function FriendsPage() {
       setMessage('❌ ' + (error.message || 'Nie udało się zaakceptować zaproszenia'))
     } finally {
       setActionLoading(null)
+      setTimeout(() => {
+        processingRef.current.delete(key)
+      }, 1000)
     }
   }
 
   const handleRejectRequest = async (requestId: string) => {
-    setActionLoading(`reject-${requestId}`)
+    const key = `reject-${requestId}`
+    if (processingRef.current.has(key)) {
+      console.log('⏳ Już odrzucam zaproszenie...')
+      return
+    }
+
+    processingRef.current.add(key)
+    setActionLoading(key)
+    
     try {
       await userService.rejectFriendRequest(requestId)
       setMessage('📭 Zaproszenie odrzucone')
@@ -194,13 +226,24 @@ export default function FriendsPage() {
       setMessage('❌ ' + (error.message || 'Nie udało się odrzucić zaproszenia'))
     } finally {
       setActionLoading(null)
+      setTimeout(() => {
+        processingRef.current.delete(key)
+      }, 1000)
     }
   }
 
   const handleRemoveFriend = async (friendId: string, friendName: string) => {
     if (!userProfile?.uid || !confirm(`Czy na pewno chcesz usunąć ${friendName} ze znajomych?`)) return
     
-    setActionLoading(`remove-${friendId}`)
+    const key = `remove-${friendId}`
+    if (processingRef.current.has(key)) {
+      console.log('⏳ Już usuwam znajomego...')
+      return
+    }
+
+    processingRef.current.add(key)
+    setActionLoading(key)
+    
     try {
       await userService.removeFriend(userProfile.uid, friendId)
       setMessage(`👋 Usunięto ${friendName} ze znajomych`)
@@ -209,6 +252,9 @@ export default function FriendsPage() {
       setMessage('❌ ' + (error.message || 'Nie udało się usunąć znajomego'))
     } finally {
       setActionLoading(null)
+      setTimeout(() => {
+        processingRef.current.delete(key)
+      }, 1000)
     }
   }
 
@@ -241,7 +287,6 @@ export default function FriendsPage() {
     }
   }
 
-  // Auto-ukrywanie wiadomości
   useEffect(() => {
     if (message) {
       const timer = setTimeout(() => setMessage(''), 5000)
@@ -289,7 +334,6 @@ export default function FriendsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
-      {/* Floating Background Elements */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-20 -right-20 w-72 h-72 bg-blue-200 rounded-full blur-3xl opacity-20 animate-float"></div>
         <div className="absolute -bottom-20 -left-20 w-96 h-96 bg-purple-200 rounded-full blur-3xl opacity-20 animate-float" style={{ animationDelay: '2s' }}></div>
@@ -299,7 +343,6 @@ export default function FriendsPage() {
       <div className="relative py-6 lg:py-8 px-4 sm:px-6">
         <div className="max-w-7xl mx-auto">
           
-          {/* Header */}
           <div className="text-center mb-8 lg:mb-12">
             <div className="inline-flex flex-col sm:flex-row items-center gap-4 lg:gap-6 px-6 lg:px-8 py-4 lg:py-6 rounded-3xl bg-white/80 backdrop-blur-xl border border-white/40 shadow-2xl mb-6">
               <div className="relative">
@@ -319,7 +362,6 @@ export default function FriendsPage() {
             </div>
           </div>
 
-          {/* Quick Actions Bar */}
           <div className="flex flex-wrap gap-3 justify-center mb-8 lg:mb-12">
             <Button
               onClick={shareProfile}
@@ -339,7 +381,6 @@ export default function FriendsPage() {
             </Button>
           </div>
 
-          {/* Stats Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-8 lg:mb-12">
             <StatCard 
               icon={Users}
@@ -372,7 +413,6 @@ export default function FriendsPage() {
             />
           </div>
 
-          {/* Tabs */}
           <div className="mb-8 lg:mb-12">
             <Card className="border-0 shadow-2xl bg-white/80 backdrop-blur-xl border border-white/40 rounded-3xl overflow-hidden">
               <CardContent className="p-3 lg:p-6">
@@ -405,7 +445,6 @@ export default function FriendsPage() {
             </Card>
           </div>
 
-          {/* Message */}
           {message && (
             <div className={cn(
               "mb-6 lg:mb-8 p-4 lg:p-6 rounded-2xl text-sm lg:text-base font-medium border flex items-center gap-3 animate-in fade-in duration-300 shadow-lg backdrop-blur-sm",
@@ -424,7 +463,6 @@ export default function FriendsPage() {
             </div>
           )}
 
-          {/* Content */}
           <div className="space-y-6 lg:space-y-8">
             {activeTab === 'friends' && (
               <FriendsList 
@@ -475,7 +513,7 @@ export default function FriendsPage() {
   )
 }
 
-// Komponenty pomocnicze
+// Komponenty pomocnicze - BEZ ZMIAN
 function StatCard({ icon: Icon, value, label, color, gradient, suffix = '' }: any) {
   return (
     <Card className="border-0 shadow-xl bg-white/80 backdrop-blur-sm border border-white/40 rounded-2xl hover:shadow-2xl transition-all duration-300 group hover:scale-105">
@@ -516,7 +554,6 @@ function TabButton({ active, onClick, icon: Icon, label, count, mobileLabel }: a
         </span>
       )}
       
-      {/* Hover effect */}
       {!active && (
         <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl" />
       )}
@@ -574,7 +611,6 @@ function FriendsList({ friends, onRemoveFriend, actionLoading, onSearchClick }: 
         <Card key={friend.uid} className="border-0 shadow-xl bg-white/80 backdrop-blur-sm hover:shadow-2xl transition-all duration-500 group hover:scale-105 rounded-3xl overflow-hidden">
           <CardContent className="p-6 lg:p-8">
             <div className="flex flex-col items-center text-center">
-              {/* Avatar */}
               <div className="relative mb-6">
                 <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-600 rounded-3xl blur-md opacity-50 group-hover:opacity-70 transition-opacity duration-300"></div>
                 <div className="relative w-20 h-20 lg:w-24 lg:h-24 bg-gradient-to-br from-blue-500 to-purple-600 rounded-3xl flex items-center justify-center text-white font-bold text-2xl lg:text-3xl shadow-2xl group-hover:scale-110 transition-transform duration-300">
@@ -590,7 +626,6 @@ function FriendsList({ friends, onRemoveFriend, actionLoading, onSearchClick }: 
                 </div>
               </div>
               
-              {/* Info */}
               <h3 className="font-bold text-gray-900 text-xl lg:text-2xl mb-2 line-clamp-1">
                 {friend.displayName}
               </h3>
@@ -598,7 +633,6 @@ function FriendsList({ friends, onRemoveFriend, actionLoading, onSearchClick }: 
                 {friend.email}
               </p>
 
-              {/* Stats */}
               <div className="grid grid-cols-2 gap-3 lg:gap-4 w-full mb-6">
                 <div className="text-center p-3 lg:p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl border border-blue-200">
                   <div className="flex items-center justify-center gap-1 mb-1">
@@ -616,7 +650,6 @@ function FriendsList({ friends, onRemoveFriend, actionLoading, onSearchClick }: 
                 </div>
               </div>
 
-              {/* Actions */}
               <div className="flex gap-3 w-full">
                 <Button
                   variant="outline"
@@ -765,7 +798,6 @@ function SearchTab({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6 lg:space-y-8">
-          {/* Search Input */}
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row gap-3 lg:gap-4">
               <div className="flex-1 relative">
@@ -804,7 +836,6 @@ function SearchTab({
             </p>
           </div>
 
-          {/* Błąd wyszukiwania */}
           {searchError && (
             <div className="p-4 lg:p-6 bg-gradient-to-r from-red-50 to-orange-50 border-2 border-red-200/60 rounded-2xl text-red-700 text-base lg:text-lg flex items-center gap-3 backdrop-blur-sm">
               <AlertCircle className="h-5 w-5 lg:h-6 lg:w-6 flex-shrink-0" />
@@ -812,7 +843,6 @@ function SearchTab({
             </div>
           )}
 
-          {/* Loading indicator */}
           {searchLoading && (
             <div className="flex flex-col items-center justify-center py-12 lg:py-16">
               <div className="relative mb-4">
@@ -823,7 +853,6 @@ function SearchTab({
             </div>
           )}
 
-          {/* Wyniki wyszukiwania */}
           {searchResults.length > 0 && (
             <div className="space-y-4 lg:space-y-6">
               <h3 className="font-bold text-gray-900 text-lg lg:text-2xl flex items-center gap-3">
@@ -881,7 +910,6 @@ function SearchTab({
             </div>
           )}
 
-          {/* Pomoc */}
           {!searchResults.length && !searchError && !searchLoading && searchName.length < 2 && (
             <div className="p-6 lg:p-8 bg-gradient-to-br from-blue-50/80 to-purple-50/80 rounded-2xl lg:rounded-3xl border-2 border-blue-200/60 backdrop-blur-sm">
               <h4 className="font-bold text-blue-900 text-lg lg:text-xl mb-4 flex items-center gap-3">
