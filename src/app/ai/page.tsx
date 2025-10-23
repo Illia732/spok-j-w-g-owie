@@ -19,10 +19,23 @@ export default function AIChatPage() {
   const [isLoading, setIsLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll to bottom
+  // Improved auto-scroll - only scroll if user is near bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    // Check if user is near bottom (within 100px) or if it's a new message from AI
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100
+    const lastMessageIsAI = messages.length > 0 && !messages[messages.length - 1].isUser
+    
+    if (isNearBottom || lastMessageIsAI) {
+      messagesEndRef.current?.scrollIntoView({ 
+        behavior: messages.length > 1 ? 'smooth' : 'auto',
+        block: 'end'
+      })
+    }
   }, [messages])
 
   // Auto-focus textarea
@@ -168,7 +181,10 @@ export default function AIChatPage() {
           {/* Enhanced Chat Container */}
           <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden">
             {/* Messages Area */}
-            <div className="h-96 overflow-y-auto p-6 space-y-6 bg-gradient-to-b from-white to-slate-50/50">
+            <div 
+              ref={messagesContainerRef}
+              className="h-96 overflow-y-auto p-6 space-y-6 bg-gradient-to-b from-white to-slate-50/50"
+            >
               {messages.length === 0 ? (
                 <div className="text-center py-12">
                   <div className="relative inline-block mb-6">
@@ -298,6 +314,7 @@ export default function AIChatPage() {
             </div>
           </div>
 
+          {/* Rest of your component remains the same */}
           {/* Enhanced Quick Suggestions */}
           <div className="mt-8">
             <h3 className="text-center text-gray-600 font-medium mb-4 flex items-center justify-center gap-2">

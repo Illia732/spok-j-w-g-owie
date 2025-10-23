@@ -31,6 +31,8 @@ export enum XPSource {
   ARTICLE_READ = 'article_read',
   FRIEND_ADDED = 'friend_added',
   FRIEND_INVITED = 'friend_invited',
+  FRIEND_VIA_LINK = "friend_via_link",
+  FRIEND_EXISTING_VIA_LINK = "friend_existing_via_link",
   
   // Passa
   DAILY_LOGIN = 'daily_login',
@@ -79,6 +81,8 @@ export class XPService {
     [XPSource.ARTICLE_READ]: 10,
     [XPSource.FRIEND_ADDED]: 25,
     [XPSource.FRIEND_INVITED]: 125,
+    [XPSource.FRIEND_VIA_LINK]: 125,              
+    [XPSource.FRIEND_EXISTING_VIA_LINK]: 25,  
     [XPSource.DAILY_LOGIN]: 5,
     [XPSource.STREAK_7_DAYS]: 25,
     [XPSource.STREAK_30_DAYS]: 75,
@@ -95,6 +99,8 @@ export class XPService {
     [XPSource.COLOR_HARMONY_FLOW]: 'Poziom Flow w Harmonii Kolorów',
     [XPSource.ARTICLE_READ]: 'Przeczytano artykuł',
     [XPSource.FRIEND_ADDED]: 'Dodano znajomego',
+    [XPSource.FRIEND_VIA_LINK]: 'Dołączyłeś przez link zaproszenia! (+125 XP)',
+    [XPSource.FRIEND_EXISTING_VIA_LINK]: 'Znajomy dodany przez link (+25 XP)',
     [XPSource.FRIEND_INVITED]: 'Zaproszony znajomy dołączył!',
     [XPSource.DAILY_LOGIN]: 'Dzienny login',
     [XPSource.STREAK_7_DAYS]: 'Passa 7 dni!',

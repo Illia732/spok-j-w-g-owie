@@ -6,7 +6,7 @@ import {
   ArrowLeft, TrendingUp, Calendar, Zap, Star, Trophy,
   Flame, Heart, Gamepad2, BookOpen, Users, Target,
   Crown, Sparkles, BarChart3, Award, Loader2,
-  ChevronDown, ChevronUp, Filter, Download
+  ChevronDown, ChevronUp, Filter, Download, Link as LinkIcon
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { onAuthStateChanged } from 'firebase/auth'
@@ -36,6 +36,8 @@ const sourceIcons: Record<XPSource, any> = {
   [XPSource.DAILY_LOGIN]: Calendar,
   [XPSource.STREAK_7_DAYS]: Flame,
   [XPSource.STREAK_30_DAYS]: Trophy,
+  [XPSource.FRIEND_VIA_LINK]: LinkIcon,
+  [XPSource.FRIEND_EXISTING_VIA_LINK]: LinkIcon, // Dodane
   [XPSource.LEVEL_UP]: Crown,
 }
 
@@ -53,6 +55,8 @@ const sourceColors: Record<XPSource, string> = {
   [XPSource.DAILY_LOGIN]: 'from-blue-500 to-indigo-500',
   [XPSource.STREAK_7_DAYS]: 'from-orange-500 to-red-500',
   [XPSource.STREAK_30_DAYS]: 'from-amber-500 to-orange-500',
+  [XPSource.FRIEND_VIA_LINK]: 'Znajomy przez link (nowy)',
+  [XPSource.FRIEND_EXISTING_VIA_LINK]: 'Znajomy przez link', // Dodane
   [XPSource.LEVEL_UP]: 'from-yellow-500 to-amber-500',
 }
 
