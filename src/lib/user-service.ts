@@ -45,7 +45,13 @@ export interface UserProfile {
   lastStreak7Reward?: Timestamp
   lastStreak30Reward?: Timestamp
   readArticles?: string[]
+  isBlocked?: boolean
+  blockReason?: string
+  blockedAt?: Date
+  blockedBy?: string
+  blockExpiresAt?: any
 }
+
 
 export interface FriendRequest {
   id: string

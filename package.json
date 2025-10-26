@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "clean": "rm -rf .next",
+    "clean:dev": "rm -rf .next && npm run dev",
+    "clean:build": "rm -rf .next && npm run build"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

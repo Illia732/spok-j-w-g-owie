@@ -20,7 +20,7 @@ export default function LoginPage() {
 
   // Jeśli użytkownik jest już zalogowany i zablokowany, pokaż alert
   if (user && !blockLoading && isBlocked && blockData) {
-    return <BlockedUserAlert blockData={blockData} />
+    return <BlockedUserAlert />
   }
 
   // Jeśli użytkownik jest już zalogowany i NIE jest zablokowany, przekieruj do dashboard

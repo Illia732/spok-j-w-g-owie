@@ -302,12 +302,12 @@ class BlockService {
       const now = new Date()
       let expiredCount = 0
 
-      for (const doc of snapshot.docs) {
-        const blockData = doc.data()
+      for (const blockDoc of snapshot.docs) {
+        const blockData = blockDoc.data()
         if (blockData.expiresAt) {
           const expiresAt = blockData.expiresAt.toDate()
           if (expiresAt < now) {
-            await this.deactivateBlock(doc.id)
+            await this.deactivateBlock(blockDoc.id)
             
             // Odblokuj użytkownika
             const userRef = doc(db, 'users', blockData.userId)
