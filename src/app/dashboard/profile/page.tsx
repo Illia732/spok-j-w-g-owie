@@ -131,22 +131,49 @@ export default function ProfilePage() {
     }
   }
 
-  // Funkcja formatująca datę rejestracji z Firebase Timestamp
+  // POPRAWIONA FUNKCJA FORMATUJĄCA DATĘ
   const getRegistrationDate = () => {
-    if (!userProfile?.createdAt) return 'Niedawno'
+    if (!userProfile?.createdAt) return 'Niedawno';
     
     try {
       const createdAt = userProfile.createdAt;
-      // Handle both Date objects and Firebase Timestamps
-      const date = createdAt instanceof Date ? createdAt : createdAt.toDate();
       
-      return date.toLocaleDateString('pl-PL', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
+      // Sprawdź czy to Firebase Timestamp (ma metodę toDate)
+      if (createdAt && typeof createdAt === 'object' && 'toDate' in createdAt) {
+        const date = (createdAt as any).toDate();
+        return date.toLocaleDateString('pl-PL', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      }
+      
+      // Jeśli to już Date object
+      if (createdAt instanceof Date) {
+        return createdAt.toLocaleDateString('pl-PL', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      }
+      
+      // Jeśli to string lub inny format
+      const date = new Date(createdAt as any);
+      if (!isNaN(date.getTime())) {
+        return date.toLocaleDateString('pl-PL', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      }
+      
+      return 'Niedawno';
     } catch (error) {
       console.error('Błąd formatowania daty:', error);
       return 'Niedawno';

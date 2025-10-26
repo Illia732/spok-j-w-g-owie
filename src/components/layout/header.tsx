@@ -7,15 +7,32 @@ import { Button } from '@/components/ui/button'
 import { 
   LogOut, User, Sparkles, Menu, X, Home, BarChart3, 
   MapPin, Users, BookOpen, FileText, Gamepad, MoreHorizontal,
-  Heart, Brain, Zap
+  Heart, Brain, Zap, Shield
 } from 'lucide-react'
 import { signOut } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
 import { useState, useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
 
+// 🎯 TYPY DLA NAWIGACJI
+interface NavigationItem {
+  href: string;
+  icon: any;
+  label: string;
+  description: string;
+  color: string;
+  essential?: boolean;
+  adminOnly?: boolean; // DODANE
+}
+
+interface NavigationConfig {
+  primary: NavigationItem[];
+  secondary: NavigationItem[];
+  tertiary: NavigationItem[];
+}
+
 // 🎯 INTELIGENTNA KONFIGURACJA NAWIGACJI - PRIORYTET UX
-const NAVIGATION_CONFIG = {
+const NAVIGATION_CONFIG: NavigationConfig = {
   // 🥇 PIERWSZY POZIOM - 4 NAJCZĘŚCIEJ UŻYWANE (zawsze widoczne)
   primary: [
     { 
@@ -81,11 +98,11 @@ const NAVIGATION_CONFIG = {
   tertiary: [
     { 
       href: '/admin/articles', 
-      icon: FileText, 
+      icon: Shield, 
       label: 'Panel Admina', 
       description: 'Zarządzanie treścią',
       color: 'emerald',
-      adminOnly: true
+      adminOnly: true // DODANE
     },
     { 
       href: '/dashboard/profile', 
@@ -246,7 +263,7 @@ export default function Header() {
     return COLOR_SCHEMES[color as keyof typeof COLOR_SCHEMES] || COLOR_SCHEMES.blue
   }
 
-  // 🎪 FILTROWANIE ELEMENTÓW NAWIGACJI
+  // 🎪 FILTROWANIE ELEMENTÓW NAWIGACJI - POPRAWIONE
   const getFilteredNavigation = () => {
     const filteredSecondary = NAVIGATION_CONFIG.secondary.filter(item => 
       !item.adminOnly || (item.adminOnly && user?.role === 'admin')
@@ -267,7 +284,7 @@ export default function Header() {
 
   // 🎪 RENDEROWANIE PRZYCISKU NAWIGACJI
   const NavButton = ({ item, compact = false, inMenu = false }: { 
-    item: any; 
+    item: NavigationItem; 
     compact?: boolean; 
     inMenu?: boolean 
   }) => {

@@ -1,193 +1,181 @@
 // src/lib/referral-service.ts
+import { db, auth } from './firebase'
 import { 
-  collection, 
   doc, 
-  addDoc, 
+  setDoc, 
   getDoc, 
-  getDocs, 
-  query, 
-  where, 
-  updateDoc,
-  serverTimestamp 
+  updateDoc, 
+  serverTimestamp,
+  collection,
+  query,
+  where,
+  getDocs,
+  writeBatch
 } from 'firebase/firestore'
-import { db } from '@/lib/firebase'
 
-export interface Referral {
-  id: string
+export interface ReferralData {
   referrerId: string
-  referralCode: string
-  createdAt: Date
+  referralCode: string // DODANE - teraz jest wymagane
+  createdAt: any
   used: boolean
-  usedBy?: string
-  usedAt?: Date
   isNewUser: boolean
+  usedBy?: string
+  usedAt?: any
 }
 
-export const referralService = {
-  /**
-   * 🔗 GENERUJE UNIKALNY KOD ZAPROSZENIOWY
-   */
-  async generateReferralCode(userId: string): Promise<string> {
-    try {
-      // Sprawdź czy użytkownik już ma aktywny kod
-      const existingQuery = query(
-        collection(db, 'referrals'),
-        where('referrerId', '==', userId),
-        where('used', '==', false)
-      )
-      const existingSnapshot = await getDocs(existingQuery)
-      
-      if (!existingSnapshot.empty) {
-        const existingCode = existingSnapshot.docs[0].data().referralCode
-        console.log('✅ Użytkownik już ma aktywny kod:', existingCode)
-        return existingCode
-      }
+class ReferralService {
+  // GENEROWANIE UNIKALNEGO KODU REFERALNEGO
+  private generateReferralCode(): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+    let result = ''
+    for (let i = 0; i < 8; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    return result
+  }
 
-      // Generuj nowy unikalny kod
-      let referralCode: string
-      let isUnique = false
-      
-      while (!isUnique) {
-        referralCode = Math.random().toString(36).substring(2, 8).toUpperCase()
+  // TWORZENIE LUB POBRANIE KODU REFERALNEGO
+  async getOrCreateReferralCode(userId: string): Promise<string> {
+    try {
+      const referralRef = doc(db, 'referrals', userId)
+      const referralSnap = await getDoc(referralRef)
+
+      if (referralSnap.exists()) {
+        const data = referralSnap.data()
+        return data.referralCode
+      } else {
+        // GENERUJ NOWY KOD
+        const referralCode = this.generateReferralCode()
         
-        const codeQuery = query(
-          collection(db, 'referrals'),
-          where('referralCode', '==', referralCode)
-        )
-        const codeSnapshot = await getDocs(codeQuery)
-        isUnique = codeSnapshot.empty
-      }
+        const referralData = {
+          referrerId: userId,
+          referralCode, // TERAZ ZMIENNA JEST ZDEFINIOWANA
+          createdAt: serverTimestamp(),
+          used: false,
+          isNewUser: false
+        }
 
-      // Zapisz kod w Firestore
-      const referralData = {
-        referrerId: userId,
-        referralCode,
-        createdAt: serverTimestamp(),
-        used: false,
-        isNewUser: false // Domyślnie dla istniejących użytkowników
-      }
-
-      await addDoc(collection(db, 'referrals'), referralData)
-      console.log('✅ Wygenerowano nowy kod zaproszeniowy:', referralCode)
-      
-      return referralCode!
-
-    } catch (error) {
-      console.error('❌ Błąd generowania kodu zaproszeniowego:', error)
-      throw new Error('Nie udało się wygenerować kodu zaproszeniowego')
-    }
-  },
-
-  /**
-   * 🔍 SPRAWDZA KOD ZAPROSZENIOWY
-   */
-  async validateReferralCode(referralCode: string): Promise<{
-    isValid: boolean
-    referrerId?: string
-    isNewUser?: boolean
-    referralId?: string
-  }> {
-    try {
-      const referralQuery = query(
-        collection(db, 'referrals'),
-        where('referralCode', '==', referralCode),
-        where('used', '==', false)
-      )
-      const referralSnapshot = await getDocs(referralQuery)
-      
-      if (referralSnapshot.empty) {
-        return { isValid: false }
-      }
-
-      const referralDoc = referralSnapshot.docs[0]
-      const referralData = referralDoc.data()
-      
-      return {
-        isValid: true,
-        referrerId: referralData.referrerId,
-        isNewUser: referralData.isNewUser,
-        referralId: referralDoc.id
+        await setDoc(referralRef, referralData)
+        return referralCode
       }
     } catch (error) {
-      console.error('❌ Błąd walidacji kodu:', error)
-      return { isValid: false }
-    }
-  },
-
-  /**
-   * 🎁 OZNACZA KOD JAKO UŻYTY + USTAWIA TYP UŻYTKOWNIKA
-   */
-  async markReferralAsUsed(
-    referralId: string, 
-    usedByUserId: string, 
-    isNewUser: boolean
-  ): Promise<void> {
-    try {
-      const referralRef = doc(db, 'referrals', referralId)
-      await updateDoc(referralRef, {
-        used: true,
-        usedBy: usedByUserId,
-        usedAt: serverTimestamp(),
-        isNewUser
-      })
-      console.log(`✅ Kod oznaczony jako użyty przez: ${usedByUserId} (nowy użytkownik: ${isNewUser})`)
-    } catch (error) {
-      console.error('❌ Błąd oznaczania kodu jako użytego:', error)
+      console.error('Błąd tworzenia/pobierania kodu referalnego:', error)
       throw error
     }
-  },
+  }
 
-  /**
-   * 📊 POBIRA STATYSTYKI ZAPROSZEŃ UŻYTKOWNIKA
-   */
-  async getUserReferralStats(userId: string): Promise<{
-    totalReferrals: number
-    activeCodes: number
-    newUsersReferred: number
-    existingUsersReferred: number
+  // UŻYCIE KODU REFERALNEGO
+  async useReferralCode(referralCode: string, newUserId: string): Promise<boolean> {
+    try {
+      // Znajdź referral po kodzie
+      const referralsRef = collection(db, 'referrals')
+      const q = query(referralsRef, where('referralCode', '==', referralCode))
+      const querySnapshot = await getDocs(q)
+
+      if (querySnapshot.empty) {
+        throw new Error('Nieprawidłowy kod referalny')
+      }
+
+      const referralDoc = querySnapshot.docs[0]
+      const referralData = referralDoc.data()
+
+      if (referralData.used) {
+        throw new Error('Ten kod został już użyty')
+      }
+
+      if (referralData.referrerId === newUserId) {
+        throw new Error('Nie możesz użyć własnego kodu')
+      }
+
+      // Aktualizuj referral
+      await updateDoc(doc(db, 'referrals', referralDoc.id), {
+        used: true,
+        usedBy: newUserId,
+        usedAt: serverTimestamp()
+      })
+
+      // Nagródź obu użytkowników
+      const batch = writeBatch(db)
+
+      // Nagroda dla polecającego
+      const referrerStatsRef = doc(db, 'userStats', referralData.referrerId)
+      batch.set(referrerStatsRef, {
+        referralsCount: 1,
+        lastReferralAt: serverTimestamp()
+      }, { merge: true })
+
+      // Nagroda dla nowego użytkownika
+      const newUserStatsRef = doc(db, 'userStats', newUserId)
+      batch.set(newUserStatsRef, {
+        joinedWithReferral: true,
+        referralCodeUsed: referralCode
+      }, { merge: true })
+
+      await batch.commit()
+      return true
+
+    } catch (error) {
+      console.error('Błąd użycia kodu referalnego:', error)
+      throw error
+    }
+  }
+
+  // POBRANIE STATYSTYK REFERALI
+  async getReferralStats(userId: string): Promise<{
+    referralCode: string
+    referralsCount: number
+    lastReferralAt: any
   }> {
     try {
-      const referralsQuery = query(
-        collection(db, 'referrals'),
-        where('referrerId', '==', userId)
-      )
-      const snapshot = await getDocs(referralsQuery)
-      
-      const referrals = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Referral[]
+      const [referralSnap, statsSnap] = await Promise.all([
+        getDoc(doc(db, 'referrals', userId)),
+        getDoc(doc(db, 'userStats', userId))
+      ])
 
-      const totalReferrals = referrals.filter(ref => ref.used).length
-      const activeCodes = referrals.filter(ref => !ref.used).length
-      const newUsersReferred = referrals.filter(ref => ref.used && ref.isNewUser).length
-      const existingUsersReferred = referrals.filter(ref => ref.used && !ref.isNewUser).length
+      const referralData = referralSnap.exists() ? referralSnap.data() : null
+      const statsData = statsSnap.exists() ? statsSnap.data() : {}
 
       return {
-        totalReferrals,
-        activeCodes,
-        newUsersReferred,
-        existingUsersReferred
+        referralCode: referralData?.referralCode || '',
+        referralsCount: statsData?.referralsCount || 0,
+        lastReferralAt: statsData?.lastReferralAt || null
       }
     } catch (error) {
-      console.error('❌ Błąd pobierania statystyk zaproszeń:', error)
-      return {
-        totalReferrals: 0,
-        activeCodes: 0,
-        newUsersReferred: 0,
-        existingUsersReferred: 0
-      }
+      console.error('Błąd pobierania statystyk referali:', error)
+      throw error
     }
-  },
+  }
 
-  /**
-   * 🔗 GENERUJE PEŁNY LINK ZAPROSZENIOWY
-   */
-  generateReferralLink(referralCode: string): string {
-    const baseUrl = typeof window !== 'undefined' 
-      ? window.location.origin 
-      : 'https://spokojwglowie.pl'
-    
-    return `${baseUrl}/auth/register?ref=${referralCode}`
+  // WERYFIKACJA KODU REFERALNEGO
+  async validateReferralCode(referralCode: string): Promise<{
+    isValid: boolean
+    error?: string
+  }> {
+    try {
+      if (!referralCode || referralCode.length !== 8) {
+        return { isValid: false, error: 'Nieprawidłowy format kodu' }
+      }
+
+      const referralsRef = collection(db, 'referrals')
+      const q = query(referralsRef, where('referralCode', '==', referralCode))
+      const querySnapshot = await getDocs(q)
+
+      if (querySnapshot.empty) {
+        return { isValid: false, error: 'Nieprawidłowy kod referalny' }
+      }
+
+      const referralData = querySnapshot.docs[0].data()
+
+      if (referralData.used) {
+        return { isValid: false, error: 'Ten kod został już użyty' }
+      }
+
+      return { isValid: true }
+    } catch (error) {
+      console.error('Błąd weryfikacji kodu referalnego:', error)
+      return { isValid: false, error: 'Błąd weryfikacji kodu' }
+    }
   }
 }
+
+export default new ReferralService()

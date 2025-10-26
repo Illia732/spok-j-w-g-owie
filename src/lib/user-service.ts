@@ -14,13 +14,14 @@ import {
   setDoc,
   orderBy,
   limit,
-  Timestamp
+  Timestamp,
+  writeBatch
 } from 'firebase/firestore'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { db, storage } from '@/lib/firebase'
 import { firebaseSearchService } from './firebase-search-service'
 import { XPService, XPSource } from './xp-service'
-import { referralService, type Referral } from './referral-service'
+import referralService from './referral-service'
 
 export interface UserProfile {
   uid: string
@@ -75,7 +76,6 @@ export interface StreakData {
 function calculateStreakFromMoods(moods: any[]): number {
   if (!moods || moods.length === 0) return 0
   
-  // Sortuj wg daty (najnowsze pierwsze)
   const sortedMoods = [...moods].sort((a, b) => 
     new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   )
@@ -84,7 +84,6 @@ function calculateStreakFromMoods(moods: any[]): number {
   let currentDate = new Date()
   currentDate.setHours(0, 0, 0, 0)
   
-  // Sprawdź czy jest wpis dzisiaj lub wczoraj
   const latestMood = sortedMoods[0]
   const latestDate = new Date(latestMood.timestamp)
   latestDate.setHours(0, 0, 0, 0)
@@ -92,10 +91,8 @@ function calculateStreakFromMoods(moods: any[]): number {
   const diffTime = currentDate.getTime() - latestDate.getTime()
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
   
-  // Jeśli ostatni wpis był więcej niż wczoraj - brak passy
   if (diffDays > 1) return 0
   
-  // Zlicz ile dni z rzędu ma wpisy
   for (let i = 0; i < sortedMoods.length; i++) {
     const moodDate = new Date(sortedMoods[i].timestamp)
     moodDate.setHours(0, 0, 0, 0)
@@ -141,49 +138,15 @@ const userService = {
       readArticles: []
     }
 
-    // 🎁 OBSŁUŻ REFERAL JEŚLI JEST KOD
     if (referralCode) {
       try {
         const referralResult = await referralService.validateReferralCode(referralCode)
         
-        if (referralResult.isValid && referralResult.referrerId && referralResult.referralId) {
-          userProfile.referredBy = referralResult.referrerId
-          
-          // Automatycznie dodaj znajomych
-          userProfile.friends = [referralResult.referrerId]
-          
-          // Dodaj znajomego do osoby zapraszającej
-          const referrer = await this.getUserProfile(referralResult.referrerId)
-          if (referrer) {
-            await this.updateUserProfile(referralResult.referrerId, {
-              friends: [...(referrer.friends || []), uid]
-            })
-          }
-          
-          // Oznacz kod jako użyty i przyznaj XP
-          const isNewUser = true // zawsze true bo to rejestracja
-          await referralService.markReferralAsUsed(
-            referralResult.referralId, 
-            uid, 
-            isNewUser
-          )
-          
-          // 🎁 PRZYZNAJ BONUSY XP
-          if (isNewUser) {
-            // Nowy użytkownik: 125 XP dla obu
-            await XPService.awardXP(referralResult.referrerId, XPSource.FRIEND_INVITED)
-            await XPService.awardXP(uid, XPSource.FRIEND_INVITED)
-            console.log(`🎁 Bonusy XP przyznane: 125 XP dla ${referralResult.referrerId} i 125 XP dla ${uid}`)
-          } else {
-            // Istniejący użytkownik: 25 XP dla obu
-            await XPService.awardXP(referralResult.referrerId, XPSource.FRIEND_ADDED)
-            await XPService.awardXP(uid, XPSource.FRIEND_ADDED)
-            console.log(`🎁 Bonusy XP przyznane: 25 XP dla ${referralResult.referrerId} i 25 XP dla ${uid}`)
-          }
+        if (referralResult.isValid) {
+          console.log('🎁 Kod referalny jest poprawny')
         }
       } catch (error) {
         console.error('❌ Błąd obsługi referala:', error)
-        // Kontynuuj tworzenie profilu nawet jeśli referal się nie udał
       }
     }
 
@@ -203,18 +166,9 @@ const userService = {
     message?: string
   }> {
     try {
-      // Ustaw typ bonusu w kodzie referalnym
-      const referralCode = await referralService.generateReferralCode(userId)
+      const referralCode = await referralService.getOrCreateReferralCode(userId)
       
-      if (isNewUserBonus) {
-        // Dla nowych użytkowników: 125 XP dla obu
-        console.log('🎁 Ustawiono bonus: 125 XP dla obu stron (nowy użytkownik)')
-      } else {
-        // Dla istniejących użytkowników: 25 XP dla obu
-        console.log('🎁 Ustawiono bonus: 25 XP dla obu stron (istniejący użytkownik)')
-      }
-      
-      const referralLink = referralService.generateReferralLink(referralCode)
+      const referralLink = `${typeof window !== 'undefined' ? window.location.origin : ''}/auth/register?ref=${referralCode}`
       
       return {
         success: true,
@@ -244,15 +198,15 @@ const userService = {
     totalXPEarned: number
   }> {
     try {
-      const stats = await referralService.getUserReferralStats(userId)
+      const stats = await referralService.getReferralStats(userId)
       
-      // Oblicz łączne XP z referali
-      const totalXPEarned = 
-        (stats.newUsersReferred * 125) + // 125 XP za każdego nowego użytkownika
-        (stats.existingUsersReferred * 25) // 25 XP za każdego istniejącego użytkownika
+      const totalXPEarned = stats.referralsCount * 25
       
       return {
-        ...stats,
+        totalReferrals: stats.referralsCount,
+        activeCodes: 1,
+        newUsersReferred: stats.referralsCount,
+        existingUsersReferred: 0,
         totalXPEarned
       }
     } catch (error) {
@@ -427,7 +381,6 @@ const userService = {
     try {
       let users = await this.getAllUsers()
       
-      // Filtruj po wyszukiwaniu
       if (filters.search) {
         const searchTerm = filters.search.toLowerCase()
         users = users.filter(user =>
@@ -438,12 +391,10 @@ const userService = {
         )
       }
       
-      // Filtruj po roli
       if (filters.role) {
         users = users.filter(user => user.role === filters.role)
       }
       
-      // Filtruj po statusie blokady
       if (filters.isBlocked !== undefined) {
         users = users.filter(user => user.isBlocked === filters.isBlocked)
       }
@@ -656,18 +607,14 @@ const userService = {
       const isNewEntry = existingEntryIndex === -1
 
       if (!isNewEntry) {
-        // Aktualizuj istniejący wpis
         updatedEntries = [...user.moodEntries]
         updatedEntries[existingEntryIndex] = newEntry
       } else {
-        // Dodaj nowy wpis
         updatedEntries = [newEntry, ...user.moodEntries]
       }
 
-      // Oblicz passę
       const streak = calculateStreakFromMoods(updatedEntries)
 
-      // Zaktualizuj profil
       await this.updateUserProfile(userId, {
         currentMood: mood,
         lastMoodUpdate: now,
@@ -675,22 +622,18 @@ const userService = {
         streak
       })
 
-      // 🎁 PRZYZNAJ XP ZA NASTRÓJ (tylko dla nowych wpisów)
       if (isNewEntry) {
         const isFirstMood = !user.hasAddedFirstMood
         
         if (isFirstMood) {
-          // Pierwszy nastrój = bonus 50 XP
           await XPService.awardXP(userId, XPSource.FIRST_MOOD)
           await updateDoc(doc(db, 'users', userId), { hasAddedFirstMood: true })
           console.log('✅ +50 XP za pierwszy nastrój!')
         } else {
-          // Normalny nastrój = 10 XP
           await XPService.awardXP(userId, XPSource.MOOD_ENTRY)
           console.log('✅ +10 XP za dodanie nastroju')
         }
 
-        // 🔥 PRZYZNAJ XP ZA PASSĘ (jeśli spełnia warunki)
         if (streak >= 7 || streak >= 30) {
           await XPService.awardStreakXP(userId, streak)
           console.log(`🔥 Sprawdzono passę: ${streak} dni`)
@@ -735,18 +678,14 @@ const userService = {
       const isNewEntry = existingEntryIndex === -1
 
       if (!isNewEntry) {
-        // Aktualizuj istniejący wpis
         updatedEntries = [...user.moodEntries]
         updatedEntries[existingEntryIndex] = newEntry
       } else {
-        // Dodaj nowy wpis
         updatedEntries = [newEntry, ...user.moodEntries]
       }
 
-      // Oblicz passę
       const streak = calculateStreakFromMoods(updatedEntries)
 
-      // Zaktualizuj profil
       await this.updateUserProfile(userId, {
         currentMood: mood,
         lastMoodUpdate: now,
@@ -754,7 +693,6 @@ const userService = {
         streak
       })
 
-      // 🎁 PRZYZNAJ XP ZA NASTRÓJ (tylko dla nowych wpisów)
       if (isNewEntry) {
         const isFirstMood = !user.hasAddedFirstMood
         
@@ -767,7 +705,6 @@ const userService = {
           console.log('✅ +10 XP za dodanie nastroju z notatką')
         }
 
-        // 🔥 PRZYZNAJ XP ZA PASSĘ
         if (streak >= 7 || streak >= 30) {
           await XPService.awardStreakXP(userId, streak)
           console.log(`🔥 Sprawdzono passę: ${streak} dni`)
@@ -874,9 +811,7 @@ const userService = {
       updateDoc(requestRef, { status: 'accepted' })
     ])
 
-    // 🎁 PRZYZNAJ XP ZA ZNAJOMYCH
     try {
-      // Dla istniejących użytkowników: 25 XP dla obu
       await XPService.awardXP(request.fromUserId, XPSource.FRIEND_ADDED)
       await XPService.awardXP(request.toUserId, XPSource.FRIEND_ADDED)
       console.log(`✅ +25 XP dla ${fromUser.displayName} i +25 XP dla ${toUser.displayName}`)
@@ -1047,16 +982,12 @@ const userService = {
     try {
       console.log(`🗑️ Rozpoczynanie usuwania konta użytkownika: ${uid}`)
       
-      // 1. Usuń profil użytkownika z Firestore
       const userRef = doc(db, 'users', uid)
       await deleteDoc(userRef)
       console.log('✅ Profil użytkownika usunięty z Firestore')
       
-      // 2. Usuń dane związane z użytkownikiem
       await this.deleteUserData(uid)
       
-      // 3. Usuń konto z Firebase Authentication
-      // (To musi być wykonane po stronie klienta z reautentykacją)
       console.log('ℹ️ Konto użytkownika oznaczone do usunięcia z Authentication')
       
       console.log('✅ Wszystkie dane użytkownika zostały usunięte')
@@ -1070,16 +1001,9 @@ const userService = {
     try {
       console.log(`🧹 Czyszczenie danych użytkownika: ${uid}`)
       
-      // Usuń zaproszenia do znajomych
       await this.deleteFriendRequests(uid)
       
-      // Usuń powiązania znajomych
       await this.removeUserFromFriends(uid)
-      
-      // Tutaj możesz dodać usuwanie innych danych:
-      // - notatki użytkownika
-      // - zadania
-      // - inne kolekcje powiązane z użytkownikiem
       
       console.log('✅ Wszystkie dane użytkownika zostały wyczyszczone')
     } catch (error) {
@@ -1090,7 +1014,6 @@ const userService = {
 
   async deleteFriendRequests(uid: string): Promise<void> {
     try {
-      // Usuń zaproszenia wysłane PRZEZ użytkownika
       const sentRequestsQuery = query(
         collection(db, 'friendRequests'),
         where('fromUserId', '==', uid)
@@ -1101,7 +1024,6 @@ const userService = {
         deleteDoc(doc.ref)
       )
       
-      // Usuń zaproszenia wysłane DO użytkownika
       const receivedRequestsQuery = query(
         collection(db, 'friendRequests'),
         where('toUserId', '==', uid)
@@ -1121,13 +1043,11 @@ const userService = {
 
   async removeUserFromFriends(uid: string): Promise<void> {
     try {
-      // Znajdź wszystkich znajomych użytkownika
       const user = await this.getUserProfile(uid)
       if (!user) return
       
       const friendIds = user.friends || []
       
-      // Usuń użytkownika z list znajomych wszystkich jego znajomych
       const updatePromises = friendIds.map(async (friendId: string) => {
         const friend = await this.getUserProfile(friendId)
         if (friend && friend.friends) {

@@ -339,12 +339,6 @@ export default function UserProfileModal({
                       <span className="font-medium text-sm">{formatDate(user.createdAt)}</span>
                     </div>
 
-                    {/* Ostatnie logowanie */}
-                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                      <span className="text-sm text-gray-600">Ostatnie logowanie:</span>
-                      <span className="font-medium text-sm">{formatDate(user.lastLoginAt) || 'Nieznana'}</span>
-                    </div>
-
                     {/* Poziom i XP */}
                     <div className="flex justify-between items-center py-2 border-b border-gray-100">
                       <span className="text-sm text-gray-600 flex items-center gap-2">
@@ -375,14 +369,7 @@ export default function UserProfileModal({
                       <span className="font-medium text-sm">{user.consistency || 0}%</span>
                     </div>
 
-                    {/* Średni nastrój */}
-                    <div className="flex justify-between items-center py-2">
-                      <span className="text-sm text-gray-600 flex items-center gap-2">
-                        <Activity className="h-4 w-4 text-purple-500" />
-                        Średni nastrój:
-                      </span>
-                      <span className="font-medium text-sm">{user.averageMood || 0}%</span>
-                    </div>
+
                   </CardContent>
                 </Card>
 
