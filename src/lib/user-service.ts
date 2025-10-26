@@ -20,6 +20,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { db, storage } from '@/lib/firebase'
 import { firebaseSearchService } from './firebase-search-service'
 import { XPService, XPSource } from './xp-service'
+import { referralService, type Referral } from './referral-service'
 
 export interface UserProfile {
   uid: string
@@ -50,8 +51,9 @@ export interface UserProfile {
   blockedAt?: Date
   blockedBy?: string
   blockExpiresAt?: any
+  referralCode?: string
+  referredBy?: string
 }
-
 
 export interface FriendRequest {
   id: string
@@ -112,7 +114,15 @@ function calculateStreakFromMoods(moods: any[]): number {
 }
 
 const userService = {
-  async initializeUserProfile(uid: string, email: string, displayName?: string): Promise<UserProfile> {
+  /**
+   * 🎯 INICJALIZACJA PROFILU Z OBSŁUGĄ REFERALI
+   */
+  async initializeUserProfile(
+    uid: string, 
+    email: string, 
+    displayName?: string,
+    referralCode?: string
+  ): Promise<UserProfile> {
     const userProfile: UserProfile = {
       uid,
       email,
@@ -131,10 +141,130 @@ const userService = {
       readArticles: []
     }
 
+    // 🎁 OBSŁUŻ REFERAL JEŚLI JEST KOD
+    if (referralCode) {
+      try {
+        const referralResult = await referralService.validateReferralCode(referralCode)
+        
+        if (referralResult.isValid && referralResult.referrerId && referralResult.referralId) {
+          userProfile.referredBy = referralResult.referrerId
+          
+          // Automatycznie dodaj znajomych
+          userProfile.friends = [referralResult.referrerId]
+          
+          // Dodaj znajomego do osoby zapraszającej
+          const referrer = await this.getUserProfile(referralResult.referrerId)
+          if (referrer) {
+            await this.updateUserProfile(referralResult.referrerId, {
+              friends: [...(referrer.friends || []), uid]
+            })
+          }
+          
+          // Oznacz kod jako użyty i przyznaj XP
+          const isNewUser = true // zawsze true bo to rejestracja
+          await referralService.markReferralAsUsed(
+            referralResult.referralId, 
+            uid, 
+            isNewUser
+          )
+          
+          // 🎁 PRZYZNAJ BONUSY XP
+          if (isNewUser) {
+            // Nowy użytkownik: 125 XP dla obu
+            await XPService.awardXP(referralResult.referrerId, XPSource.FRIEND_INVITED)
+            await XPService.awardXP(uid, XPSource.FRIEND_INVITED)
+            console.log(`🎁 Bonusy XP przyznane: 125 XP dla ${referralResult.referrerId} i 125 XP dla ${uid}`)
+          } else {
+            // Istniejący użytkownik: 25 XP dla obu
+            await XPService.awardXP(referralResult.referrerId, XPSource.FRIEND_ADDED)
+            await XPService.awardXP(uid, XPSource.FRIEND_ADDED)
+            console.log(`🎁 Bonusy XP przyznane: 25 XP dla ${referralResult.referrerId} i 25 XP dla ${uid}`)
+          }
+        }
+      } catch (error) {
+        console.error('❌ Błąd obsługi referala:', error)
+        // Kontynuuj tworzenie profilu nawet jeśli referal się nie udał
+      }
+    }
+
     await setDoc(doc(db, 'users', uid), userProfile)
     console.log('✅ Nowy profil utworzony:', userProfile.displayName)
     
     return userProfile
+  },
+
+  /**
+   * 🔗 GENERUJ LINK ZAPROSZENIOWY Z BONUSEM XP
+   */
+  async generateReferralLink(userId: string, isNewUserBonus: boolean = false): Promise<{
+    success: boolean
+    referralLink?: string
+    referralCode?: string
+    message?: string
+  }> {
+    try {
+      // Ustaw typ bonusu w kodzie referalnym
+      const referralCode = await referralService.generateReferralCode(userId)
+      
+      if (isNewUserBonus) {
+        // Dla nowych użytkowników: 125 XP dla obu
+        console.log('🎁 Ustawiono bonus: 125 XP dla obu stron (nowy użytkownik)')
+      } else {
+        // Dla istniejących użytkowników: 25 XP dla obu
+        console.log('🎁 Ustawiono bonus: 25 XP dla obu stron (istniejący użytkownik)')
+      }
+      
+      const referralLink = referralService.generateReferralLink(referralCode)
+      
+      return {
+        success: true,
+        referralLink,
+        referralCode,
+        message: isNewUserBonus 
+          ? 'Link zaproszeniowy z bonusem 125 XP dla obu stron!'
+          : 'Link zaproszeniowy z bonusem 25 XP dla obu stron!'
+      }
+    } catch (error) {
+      console.error('❌ Błąd generowania linku referalnego:', error)
+      return {
+        success: false,
+        message: 'Nie udało się wygenerować linku zaproszeniowego'
+      }
+    }
+  },
+
+  /**
+   * 📊 POBERZ STATYSTYKI REFERALI UŻYTKOWNIKA
+   */
+  async getUserReferralStats(userId: string): Promise<{
+    totalReferrals: number
+    activeCodes: number
+    newUsersReferred: number
+    existingUsersReferred: number
+    totalXPEarned: number
+  }> {
+    try {
+      const stats = await referralService.getUserReferralStats(userId)
+      
+      // Oblicz łączne XP z referali
+      const totalXPEarned = 
+        (stats.newUsersReferred * 125) + // 125 XP za każdego nowego użytkownika
+        (stats.existingUsersReferred * 25) // 25 XP za każdego istniejącego użytkownika
+      
+      return {
+        ...stats,
+        totalXPEarned
+      }
+    } catch (error) {
+      console.error('❌ Błąd pobierania statystyk referali:', error)
+      return {
+        totalReferrals: 0,
+        activeCodes: 0,
+        newUsersReferred: 0,
+        existingUsersReferred: 0,
+        totalXPEarned: 0
+      }
+    }
   },
 
   async getUserProfile(uid: string): Promise<UserProfile | null> {
@@ -746,13 +876,10 @@ const userService = {
 
     // 🎁 PRZYZNAJ XP ZA ZNAJOMYCH
     try {
-      // Użytkownik który wysłał zaproszenie dostaje bonus XP
-      await XPService.awardXP(request.fromUserId, XPSource.FRIEND_INVITED)
-      console.log(`✅ +125 XP dla ${fromUser.displayName} (zaproszenie zaakceptowane)`)
-
-      // Użytkownik który zaakceptował dostaje XP
+      // Dla istniejących użytkowników: 25 XP dla obu
+      await XPService.awardXP(request.fromUserId, XPSource.FRIEND_ADDED)
       await XPService.awardXP(request.toUserId, XPSource.FRIEND_ADDED)
-      console.log(`✅ +25 XP dla ${toUser.displayName} (dodano znajomego)`)
+      console.log(`✅ +25 XP dla ${fromUser.displayName} i +25 XP dla ${toUser.displayName}`)
     } catch (error) {
       console.error('❌ Błąd przyznawania XP za znajomych:', error)
     }

@@ -192,13 +192,6 @@ export default function MoodPage() {
         <div className="container mx-auto max-w-4xl">
           {/* Nagłówek */}
           <div className="flex items-center justify-between mb-6">
-            <Link href="/dashboard">
-              <Button variant="outline" className="text-gray-600 hover:text-gray-900">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Powrót
-              </Button>
-            </Link>
-            
             <div className="text-center">
               <h1 className="text-xl font-semibold text-gray-900">
                 {currentView === 'mood-selection' ? 'Jak się czujesz?' : 
@@ -207,8 +200,6 @@ export default function MoodPage() {
                  'Twój nastrój'}
               </h1>
             </div>
-            
-            <div className="w-20"></div>
           </div>
 
           <div className="space-y-6">
