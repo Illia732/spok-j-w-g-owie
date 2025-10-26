@@ -398,14 +398,14 @@ export default function AIChatPage() {
                   Chcesz, żeby asystent AI był bardziej dostępny?
                 </p>
                 <a 
-                  href="mailto:spokojwglowie.kontakt@gmail.com?subject=Wsparcie dla Asystenta AI&body=Chcę wesprzeć rozwój Asystenta AI i zwiększenie jego dostępności!"
+                  href="mailto:unfoggo@gmail.com?subject=Wsparcie dla Asystenta AI&body=Chcę wesprzeć rozwój Asystenta AI i zwiększenie jego dostępności!"
                   className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-medium text-sm hover:from-amber-600 hover:to-orange-600 transition-all duration-300 transform hover:scale-105 shadow-md"
                 >
                   <Mail className="w-4 h-4" />
                   Napisz do nas!
                 </a>
                 <p className="text-xs text-amber-600 mt-2">
-                  spokojwglowie.kontakt@gmail.com
+                  unfoggo@gmail.com
                 </p>
               </div>
             </div>

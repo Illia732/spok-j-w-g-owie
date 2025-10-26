@@ -9,7 +9,7 @@ import {
 } from 'firebase/auth'
 import { doc, setDoc } from 'firebase/firestore'
 import { auth, db } from './firebase'
-import userService from './user-service' // 👈 DODAJEMY IMPORT
+import userService from './user-service'
 
 export interface UserData {
   uid: string
@@ -39,9 +39,8 @@ export const authService = {
         displayName: `${userData.firstName} ${userData.lastName}`
       })
 
-      // 👇 DODAJEMY AUTOMATYCZNE WYKRYWANIE ADMINA
-      const isAdmin = email.endsWith('@admin.com') || email.endsWith('@spokojwglowie.pl')
-      const userRole: 'user' | 'admin' = isAdmin ? 'admin' : 'user'
+      // 👇 POPRAWIONE: TYLKO 'user' - bez automatycznego admina
+      const userRole: 'user' | 'admin' = 'user'
 
       // Zapisz dane użytkownika w Firestore
       const userDoc: UserData = {
@@ -54,8 +53,8 @@ export const authService = {
         xp: 0,
         streak: 0,
         unlockedMasks: ['calm'],
-        createdAt: new Date(), // 👈 DODAJEMY PRZECINEK!
-        role: userRole
+        createdAt: new Date(),
+        role: userRole // ZAWSZE 'user' przy rejestracji
       }
 
       await setDoc(doc(db, 'users', userCredential.user.uid), userDoc)
@@ -69,6 +68,7 @@ export const authService = {
     }
   },
 
+  // ... reszta funkcji bez zmian
   async login(email: string, password: string): Promise<UserCredential> {
     try {
       return await signInWithEmailAndPassword(auth, email, password)
@@ -87,7 +87,6 @@ export const authService = {
     }
   },
 
-  // 👇 DODAJEMY NOWE FUNKCJE
   async isUserAdmin(uid: string): Promise<boolean> {
     try {
       const userData = await userService.getUserProfile(uid)
@@ -108,31 +107,5 @@ export const authService = {
     }
   }
 }
-
-export interface UserData {
-  uid: string
-  email: string
-  firstName: string
-  lastName: string
-  currentMask: string
-  level: number
-  xp: number
-  streak: number
-  unlockedMasks: string[]
-  createdAt: Date
-  role: 'user' | 'admin'
-  // 👇 DODAJEMY NOWE POLA
-  moodHistory?: MoodEntry[]
-  currentMood?: number
-  lastMoodUpdate?: Date
-}
-
-export interface MoodEntry {
-  date: string // ISO date string "2024-01-15"
-  mood: number // 0-100
-  timestamp: any // Firestore timestamp
-  note?: string // Opcjonalna notatka
-}
-
 
 export default authService

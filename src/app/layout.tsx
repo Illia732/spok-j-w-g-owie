@@ -2,7 +2,8 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '@/components/providers/auth-provider'
-import { Analytics } from '@vercel/analytics/next'
+import { BlockProvider } from '@/components/providers/block-provider'
+import { ClientLayout } from '@/components/client-layout'
 
 const inter = Inter({ 
   subsets: ['latin'],
@@ -14,20 +15,15 @@ export const metadata: Metadata = {
   description: 'Dołącz do użytkowników, którzy doznali uczucia czystego umysłu.',
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pl">
-      <body className={inter.className}>
+      <body>
         <AuthProvider>
-          <div className="min-h-screen bg-gray-50">
+          <ClientLayout>
             {children}
-          </div>
+          </ClientLayout>
         </AuthProvider>
-        <Analytics />
       </body>
     </html>
   )

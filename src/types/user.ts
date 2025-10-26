@@ -18,6 +18,25 @@ export interface UserProfile {
   lastMoodUpdate?: Date
   moodEntries?: any[]
   role?: string
+  isBlocked?: boolean
+  blockedReason?: string
+  blockedAt?: Date
+  blockedBy?: string
+  blockExpiresAt?: Date
+}
+
+export interface BlockedUser {
+  id: string
+  userId: string
+  email: string
+  displayName: string
+  blockedBy: string
+  blockedByEmail: string
+  reason: string
+  blockedAt: Date
+  expiresAt?: Date
+  isPermanent: boolean
+  isActive: boolean
 }
 
 export interface FriendRequest {

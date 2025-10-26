@@ -157,6 +157,168 @@ const userService = {
     }
   },
 
+  /**
+   * 🎯 POBIERZ WSZYSTKICH UŻYTKOWNIKÓW (dla admina)
+   */
+  async getAllUsers(): Promise<UserProfile[]> {
+    try {
+      const usersQuery = query(
+        collection(db, 'users'),
+        orderBy('createdAt', 'desc')
+      )
+      
+      const snapshot = await getDocs(usersQuery)
+      const users: UserProfile[] = []
+      
+      snapshot.forEach((doc) => {
+        const data = doc.data()
+        users.push({
+          uid: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toDate() || new Date(),
+          updatedAt: data.updatedAt?.toDate() || new Date(),
+          lastMoodUpdate: data.lastMoodUpdate?.toDate(),
+        } as UserProfile)
+      })
+      
+      console.log(`✅ Pobrano ${users.length} użytkowników`)
+      return users
+    } catch (error) {
+      console.error('❌ Błąd pobierania użytkowników:', error)
+      return []
+    }
+  },
+
+  /**
+   * 🔍 ZNAJDŹ UŻYTKOWNIKA PO EMAILU
+   */
+  async findUserByEmail(email: string): Promise<UserProfile | null> {
+    try {
+      const usersQuery = query(
+        collection(db, 'users'),
+        where('email', '==', email.toLowerCase()),
+        limit(1)
+      )
+      
+      const snapshot = await getDocs(usersQuery)
+      
+      if (snapshot.empty) {
+        return null
+      }
+      
+      const doc = snapshot.docs[0]
+      const data = doc.data()
+      
+      return {
+        uid: doc.id,
+        ...data,
+        createdAt: data.createdAt?.toDate() || new Date(),
+        updatedAt: data.updatedAt?.toDate() || new Date(),
+        lastMoodUpdate: data.lastMoodUpdate?.toDate(),
+      } as UserProfile
+    } catch (error) {
+      console.error('❌ Błąd wyszukiwania użytkownika po email:', error)
+      return null
+    }
+  },
+
+  /**
+   * 📊 POBIERZ STATYSTYKI WSZYSTKICH UŻYTKOWNIKÓW
+   */
+  async getUsersStats(): Promise<{
+    totalUsers: number
+    activeToday: number
+    newThisWeek: number
+    admins: number
+  }> {
+    try {
+      const users = await this.getAllUsers()
+      const now = new Date()
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const weekAgo = new Date(today)
+      weekAgo.setDate(weekAgo.getDate() - 7)
+      
+      const activeToday = users.filter(user => {
+        if (!user.lastMoodUpdate) return false
+        const lastUpdate = new Date(user.lastMoodUpdate)
+        return lastUpdate >= today
+      }).length
+      
+      const newThisWeek = users.filter(user => 
+        user.createdAt >= weekAgo
+      ).length
+      
+      const admins = users.filter(user => user.role === 'admin').length
+      
+      return {
+        totalUsers: users.length,
+        activeToday,
+        newThisWeek,
+        admins
+      }
+    } catch (error) {
+      console.error('❌ Błąd pobierania statystyk użytkowników:', error)
+      return {
+        totalUsers: 0,
+        activeToday: 0,
+        newThisWeek: 0,
+        admins: 0
+      }
+    }
+  },
+
+  /**
+   * 🔧 ZMIEŃ ROLĘ UŻYTKOWNIKA
+   */
+  async changeUserRole(userId: string, newRole: 'user' | 'admin'): Promise<void> {
+    try {
+      await this.updateUserProfile(userId, { role: newRole })
+      console.log(`✅ Zmieniono rolę użytkownika ${userId} na: ${newRole}`)
+    } catch (error) {
+      console.error('❌ Błąd zmiany roli użytkownika:', error)
+      throw error
+    }
+  },
+
+  /**
+   * 📧 POBIERZ UŻYTKOWNIKÓW Z FILTRAMI
+   */
+  async getUsersWithFilters(filters: {
+    search?: string
+    role?: string
+    isBlocked?: boolean
+  } = {}): Promise<UserProfile[]> {
+    try {
+      let users = await this.getAllUsers()
+      
+      // Filtruj po wyszukiwaniu
+      if (filters.search) {
+        const searchTerm = filters.search.toLowerCase()
+        users = users.filter(user =>
+          user.email.toLowerCase().includes(searchTerm) ||
+          user.displayName.toLowerCase().includes(searchTerm) ||
+          user.firstName?.toLowerCase().includes(searchTerm) ||
+          user.lastName?.toLowerCase().includes(searchTerm)
+        )
+      }
+      
+      // Filtruj po roli
+      if (filters.role) {
+        users = users.filter(user => user.role === filters.role)
+      }
+      
+      // Filtruj po statusie blokady
+      if (filters.isBlocked !== undefined) {
+        users = users.filter(user => user.isBlocked === filters.isBlocked)
+      }
+      
+      return users
+    } catch (error) {
+      console.error('❌ Błąd filtrowania użytkowników:', error)
+      return []
+    }
+  },
+
   async findUsersByName(searchTerm: string, currentUserId: string): Promise<UserProfile[]> {
     try {
       if (!searchTerm.trim() || searchTerm.length < 2) {
@@ -747,7 +909,6 @@ const userService = {
       console.error('Błąd oznaczania notyfikacji jako przeczytanej:', error)
     }
   },
-  // ... istniejący kod ...
 
   async deleteUserAccount(uid: string): Promise<void> {
     try {
@@ -849,4 +1010,5 @@ const userService = {
     }
   },
 }
+
 export default userService
